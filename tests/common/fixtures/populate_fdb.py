@@ -78,9 +78,6 @@ class PopulateFdb:
         logger.info("Copying VLan config file to {0}".format(self.ptfhost.hostname))
         self.ptfhost.copy(src=self.VLAN_CONFIG_FILE, dest="/tmp/")
 
-        logger.info("Copying ptftests to {0}".format(self.ptfhost.hostname))
-        self.ptfhost.copy(src="ptftests", dest="/root")
-
     def run(self):
         """
             Populates DUT FDB entries

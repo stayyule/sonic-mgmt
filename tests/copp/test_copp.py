@@ -27,13 +27,19 @@
 """
 
 import time
+import pytest
 from collections import namedtuple
 
-import pytest
+from common.fixtures.ptfhost_utils import copy_ptftests_directory   # lgtm[py/unused-import]
+from common.fixtures.ptfhost_utils import change_mac_addresses      # lgtm[py/unused-import]
 from copp import copp_utils
 from ptf_runner import ptf_runner
 from common.system_utils import docker
 from common.broadcom_data import is_broadcom_device
+
+pytestmark = [
+    pytest.mark.topology('t1')
+]
 
 _COPPTestParameters = namedtuple("_COPPTestParameters",
                                  ["nn_target_port",
@@ -62,7 +68,7 @@ class TestCOPP(object):
 
         if protocol == "ARP" \
                 and is_broadcom_device(duthost) \
-                and "201811" not in duthost.get_version():
+                and "201811" not in duthost.os_version:
             pytest.xfail("ARP policy disabled on BRCM devices due to SAI bug")
 
         if protocol in ["IP2ME", "SNMP", "SSH"] and _copp_testbed.topo == "t1-lag":

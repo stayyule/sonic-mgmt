@@ -16,9 +16,12 @@ from common.plugins.loganalyzer.loganalyzer import LogAnalyzer, LogAnalyzerError
 from common.utilities import wait_until
 from thermal_control_test_helper import *
 
+pytestmark = [
+    pytest.mark.topology('any')
+]
+
 CMD_PLATFORM_SUMMARY = "show platform summary"
 CMD_PLATFORM_PSUSTATUS = "show platform psustatus"
-CMD_PLATFORM_SYSEEPROM = "show platform syseeprom"
 CMD_PLATFORM_FANSTATUS = "show platform fan"
 CMD_PLATFORM_TEMPER = "show platform temperature"
 
@@ -273,39 +276,6 @@ def parse_platform_summary(raw_input_lines):
     return res
 
 
-def test_show_platform_syseeprom(duthost):
-    """
-    @summary: Check output of 'show platform syseeprom'
-    """
-    logging.info("Check output of '%s'" % CMD_PLATFORM_SYSEEPROM)
-    show_output = duthost.command(CMD_PLATFORM_SYSEEPROM)
-    if duthost.facts["asic_type"] in ["mellanox"]:
-        expected_fields = [
-            "Product Name",
-            "Part Number",
-            "Serial Number",
-            "Base MAC Address",
-            "Manufacture Date",
-            "Device Version",
-            "MAC Addresses",
-            "Manufacturer",
-            "Vendor Extension",
-            "ONIE Version",
-            "CRC-32"]
-        utility_cmd = "sudo python -c \"import imp; \
-            m = imp.load_source('eeprom', '/usr/share/sonic/device/%s/plugins/eeprom.py'); \
-            t = m.board('board', '', '', ''); e = t.read_eeprom(); t.decode_eeprom(e)\"" % duthost.facts["platform"]
-        utility_cmd_output = duthost.command(utility_cmd)
-
-        for field in expected_fields:
-            assert show_output["stdout"].find(field) >= 0, "Expected field %s is not found" % field
-            assert utility_cmd_output["stdout"].find(field) >= 0, "Expected field %s is not found" % field
-
-        for line in utility_cmd_output["stdout_lines"]:
-            assert line in show_output["stdout"], \
-                "Line %s is not found in output of '%s'" % (line, CMD_PLATFORM_SYSEEPROM)
-
-
 def check_show_platform_fanstatus_output(lines):
     """
     @summary: Check basic output of 'show platform fan'. Expect output are:
@@ -547,7 +517,7 @@ def test_thermal_control_fan_status(duthost, mocker_factory):
             logging.info('Mocking the fault FAN back to normal...')
             single_fan_mocker.mock_status(True)
             check_cli_output_with_mocker(dut, single_fan_mocker, CMD_PLATFORM_FANSTATUS, THERMAL_CONTROL_TEST_WAIT_TIME, 2)
-        
+
         loganalyzer.expect_regex = [LOG_EXPECT_FAN_OVER_SPEED_RE]
         with loganalyzer:
             logging.info('Mocking an over speed FAN...')

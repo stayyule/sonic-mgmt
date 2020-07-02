@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 vlan_id_list = [ 100, 200 ]
 
+pytestmark = [
+    pytest.mark.topology('t0')
+]
 
 @pytest.fixture(scope="module")
 def cfg_facts(duthost):
@@ -184,7 +187,7 @@ def tearDown(vlan_ports_list, duthost, ptfhost, vlan_intfs_list, portchannel_int
     except RunAnsibleModuleFail as e:
         logger.error(e)
 
-    duthost.shell("config reload -y &>/dev/null")
+    duthost.shell("config reload -y &>/dev/null", executable="/bin/bash")
 
     # make sure Portchannels go up for post-test link sanity
     time.sleep(90)

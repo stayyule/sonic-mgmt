@@ -1,4 +1,5 @@
 from common.utilities import wait_until
+from common.helpers.assertions import pytest_assert
 import logging
 logger = logging.getLogger(__name__)
 
@@ -7,6 +8,7 @@ import pytest
 pytestmark = [
     pytest.mark.sanity_check(skip_sanity=True),
     pytest.mark.disable_loganalyzer,
+    pytest.mark.topology('any')
 ]
 
 @pytest.fixture(scope="module")
@@ -17,7 +19,7 @@ def setup_ntp(ptfhost, duthost, creds):
         ptfhost.lineinfile(path="/etc/ntp.conf", line="server 127.127.1.0 prefer")
 
     # enable ntp server
-    ptfhost.service(name="ntp", state="started")
+    ntp_en_res = ptfhost.service(name="ntp", state="started")
 
     # setup ntp on dut to sync with ntp server
     config_facts  = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
@@ -27,8 +29,8 @@ def setup_ntp(ptfhost, duthost, creds):
 
     ptfip = ptfhost.host.options['inventory_manager'].get_host(ptfhost.hostname).vars['ansible_host']
     duthost.command("config ntp add %s" % ptfip)
-
-    wait_until(120, 5, check_ntp_status, ptfhost)
+    pytest_assert(wait_until(120, 5, check_ntp_status, ptfhost), \
+        "NTP server was not started in PTF container {}; NTP service start result {}".format(ptfhost.hostname, ntp_en_res))
 
     yield
 
@@ -40,7 +42,7 @@ def setup_ntp(ptfhost, duthost, creds):
         duthost.command("config ntp add %s" % ntp_server)
 
 def check_ntp_status(host):
-    res = host.command("ntpstat")
+    res = host.command("ntpstat", module_ignore_errors=True)
     if res['rc'] != 0:
        return False
     return True
@@ -51,4 +53,4 @@ def test_ntp(duthost, setup_ntp):
     duthost.service(name='ntp', state='stopped')
     duthost.command("ntpd -gq")
     duthost.service(name='ntp', state='restarted')
-    assert wait_until(120, 5, check_ntp_status, duthost), "Ntp not in sync"
+    pytest_assert(wait_until(300, 5, check_ntp_status, duthost), "NTP not in sync")

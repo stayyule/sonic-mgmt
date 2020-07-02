@@ -121,15 +121,18 @@ class AdvancedReboot:
         self.rebootData['vlan_ip_range'] = self.mgFacts['minigraph_vlan_interfaces'][0]['subnet']
         self.rebootData['dut_vlan_ip'] = self.mgFacts['minigraph_vlan_interfaces'][0]['addr']
 
-        invetory = self.duthost.host.options['inventory'].split('/')[-1]
-        secrets = self.duthost.host.options['variable_manager']._hostvars[self.duthost.hostname]['secret_group_vars']
+        hostVars = self.duthost.host.options['variable_manager']._hostvars[self.duthost.hostname]
+        invetory = hostVars['inventory_file'].split('/')[-1]
+        secrets = hostVars['secret_group_vars']
         self.rebootData['dut_username'] = secrets[invetory]['sonicadmin_user']
         self.rebootData['dut_password'] = secrets[invetory]['sonicadmin_password']
 
+        # Change network of the dest IP addresses (used by VM servers) to be different from Vlan network
+        prefixLen = self.mgFacts['minigraph_vlan_interfaces'][0]['prefixlen'] - 3
+        testNetwork = ipaddress.ip_address(self.mgFacts['minigraph_vlan_interfaces'][0]['addr']) + (1 << (32 - prefixLen))
         self.rebootData['default_ip_range'] = str(
-            ipaddress.ip_interface(self.mgFacts['minigraph_vlan_interfaces'][0]['addr'] + '/18').network
+            ipaddress.ip_interface(unicode(str(testNetwork) + '/{0}'.format(prefixLen))).network
         )
-
         for intf in self.mgFacts['minigraph_lo_interfaces']:
             if ipaddress.ip_interface(intf['addr']).ip.version == 6:
                 self.rebootData['lo_v6_prefix'] = str(ipaddress.ip_interface(intf['addr'] + '/64').network)
@@ -286,12 +289,9 @@ class AdvancedReboot:
         ]
         self.__transferTestDataFiles(testDataFiles, self.ptfhost)
 
-        self.__runScript(['remove_ip.sh', 'change_mac.sh'], self.ptfhost)
+        self.__runScript(['remove_ip.sh'], self.ptfhost)
 
         self.__prepareTestbedSshKeys()
-
-        logger.info('Copy tests to the PTF container  {}'.format(self.ptfhost.hostname))
-        self.ptfhost.copy(src='ptftests', dest='/root')
 
         logger.info('Copy ARP responder to the PTF container  {}'.format(self.ptfhost.hostname))
         self.ptfhost.copy(src='scripts/arp_responder.py', dest='/opt')

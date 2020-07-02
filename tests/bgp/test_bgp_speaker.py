@@ -3,8 +3,15 @@ from netaddr import *
 import time
 import logging
 import requests
-from ptf_runner import ptf_runner
 
+from common.fixtures.ptfhost_utils import copy_ptftests_directory   # lgtm[py/unused-import]
+from common.fixtures.ptfhost_utils import change_mac_addresses      # lgtm[py/unused-import]
+from ptf_runner import ptf_runner
+from common.utilities import wait_tcp_connection
+
+pytestmark = [
+    pytest.mark.topology('t0')
+]
 
 def generate_ips(num, prefix, exclude_ips):
     """
@@ -36,7 +43,7 @@ def announce_route(ptfip, neighbor, route, nexthop, port):
 
 
 @pytest.fixture(scope="module")
-def common_setup_teardown(duthost, ptfhost):
+def common_setup_teardown(duthost, ptfhost, localhost):
 
     logging.info("########### Setup for bgp speaker testing ###########")
 
@@ -44,7 +51,6 @@ def common_setup_teardown(duthost, ptfhost):
     logging.info("ptfip=%s" % ptfip)
 
     ptfhost.script("./scripts/remove_ip.sh")
-    ptfhost.script("./scripts/change_mac.sh")
 
     mg_facts = duthost.minigraph_facts(host=duthost.hostname)['ansible_facts']
     interface_facts = duthost.interface_facts()['ansible_facts']
@@ -100,9 +106,16 @@ def common_setup_teardown(duthost, ptfhost):
                        peer_asn=mg_facts['minigraph_bgp_asn'],
                        port=str(port_num[i]))
 
+    # check exabgp http_api port is ready
+    http_ready = True
+    for i in range(0, 3):
+        http_ready = wait_tcp_connection(localhost, ptfip, port_num[i])
+        if not http_ready:
+            break
+
     logging.info("########### Done setup for bgp speaker testing ###########")
 
-    yield ptfip, mg_facts, interface_facts, vlan_ips, speaker_ips, port_num
+    yield ptfip, mg_facts, interface_facts, vlan_ips, speaker_ips, port_num, http_ready
 
     logging.info("########### Teardown for bgp speaker testing ###########")
 
@@ -120,7 +133,8 @@ def common_setup_teardown(duthost, ptfhost):
 def test_bgp_speaker_bgp_sessions(common_setup_teardown, duthost, ptfhost, collect_techsupport):
     """Setup bgp speaker on T0 topology and verify bgp sessions are established
     """
-    ptfip, mg_facts, interface_facts, vlan_ips, speaker_ips, port_num = common_setup_teardown
+    ptfip, mg_facts, interface_facts, vlan_ips, speaker_ips, port_num, http_ready = common_setup_teardown
+    assert http_ready
 
     logging.info("Wait some time to verify that bgp sessions are established")
     time.sleep(20)
@@ -135,7 +149,8 @@ def test_bgp_speaker_announce_routes(common_setup_teardown, testbed, duthost, pt
     """Setup bgp speaker on T0 topology and verify routes advertised by bgp speaker is received by T0 TOR
 
     """
-    ptfip, mg_facts, interface_facts, vlan_ips, speaker_ips, port_num = common_setup_teardown
+    ptfip, mg_facts, interface_facts, vlan_ips, speaker_ips, port_num, http_ready = common_setup_teardown
+    assert http_ready
 
     logging.info("announce route")
     peer_range = mg_facts['minigraph_bgp_peers_with_range'][0]['ip_range'][0]
@@ -171,8 +186,6 @@ def test_bgp_speaker_announce_routes(common_setup_teardown, testbed, duthost, pt
     logging.info("extra_vars: %s" % str(ptfhost.host.options['variable_manager'].extra_vars))
 
     ptfhost.template(src="bgp_speaker/bgp_speaker_route.j2", dest="/root/bgp_speaker_route.txt")
-
-    ptfhost.copy(src="ptftests", dest="/root")
 
     logging.info("run ptf test")
 
