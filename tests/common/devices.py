@@ -337,7 +337,8 @@ class SonicHost(AnsibleHostBase):
         # get critical process list for the service
         output = self.command("docker exec {} bash -c '[ -f /etc/supervisor/critical_processes ] && cat /etc/supervisor/critical_processes'".format(service), module_ignore_errors=True)
         for l in output['stdout'].split():
-            critical_process_list.append(l.rstrip())
+            # If ':' exists, the second field is got. Otherwise the only field is got.
+            critical_process_list.append(l.split(':')[-1].rstrip())
         if len(critical_process_list) == 0:
             return result
 
@@ -655,6 +656,27 @@ default via fc00::7e dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pre
                 return iface_info["macaddress"]
 
         return None
+
+    def get_feature_status(self):
+        """
+        Gets the list of features and states
+
+        Returns:
+            dict: feature status dict. { <feature name> : <status: enabled | disabled> }
+            bool: status obtained successfully (True | False)
+        """
+        feature_status = {}
+        command_output = self.shell('show features', module_ignore_errors=True)
+        if command_output['rc'] != 0:
+            return feature_status, False
+
+        features_stdout = command_output['stdout_lines']
+        lines = features_stdout[2:]
+        for x in lines:
+            result = x.encode('UTF-8')
+            r = result.split()
+            feature_status[r[0]] = r[1]
+        return feature_status, True
 
 class EosHost(AnsibleHostBase):
     """
