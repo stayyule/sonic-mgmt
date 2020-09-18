@@ -45,6 +45,7 @@ class AdvancedReboot:
         self.localhost = localhost
         self.testbed = testbed
         self.creds = creds
+        self.moduleIgnoreErrors = False
         self.__dict__.update(kwargs)
         self.__extractTestParam()
         self.rebootData = {}
@@ -122,8 +123,8 @@ class AdvancedReboot:
         self.rebootData['vlan_ip_range'] = self.mgFacts['minigraph_vlan_interfaces'][0]['subnet']
         self.rebootData['dut_vlan_ip'] = self.mgFacts['minigraph_vlan_interfaces'][0]['addr']
 
-        self.rebootData['dut_username'] = creds['sonicadmin_user']
-        self.rebootData['dut_password'] = creds['sonicadmin_password']
+        self.rebootData['dut_username'] = self.creds['sonicadmin_user']
+        self.rebootData['dut_password'] = self.creds['sonicadmin_password']
 
         # Change network of the dest IP addresses (used by VM servers) to be different from Vlan network
         prefixLen = self.mgFacts['minigraph_vlan_interfaces'][0]['prefixlen'] - 3
@@ -264,6 +265,8 @@ class AdvancedReboot:
         logger.info('Download SONiC image')
         self.duthost.shell('curl {0} --output {1}'.format(self.newSonicImage, tempfile))
 
+        self.binaryVersion = self.duthost.shell('sonic_installer binary_version {}'.format(tempfile))['stdout']
+
         logger.info('Cleanup sonic images that is not current and/or next')
         if self.cleanupOldSonicImages:
             self.duthost.shell('sonic_installer cleanup -y')
@@ -340,24 +343,23 @@ class AdvancedReboot:
         logger.info('Fetching log files from ptf and dut hosts')
         logFiles = {
             self.ptfhost: [
-                {'src': rebootLog, 'dest': '/tmp', 'flat': True, 'fail_on_missing': False},
-                {'src': capturePcap, 'dest': '/tmp', 'flat': True, 'fail_on_missing': False},
-                {'src': filterPcap, 'dest': '/tmp', 'flat': True, 'fail_on_missing': False},
+                {'src': rebootLog, 'dest': '/tmp/', 'flat': True, 'fail_on_missing': False},
+                {'src': capturePcap, 'dest': '/tmp/', 'flat': True, 'fail_on_missing': False},
+                {'src': filterPcap, 'dest': '/tmp/', 'flat': True, 'fail_on_missing': False},
             ],
             self.duthost: [
-                {'src': syslogFile, 'dest': '/tmp', 'flat': True},
-                {'src': sairedisRec, 'dest': '/tmp', 'flat': True},
-                {'src': swssRec, 'dest': '/tmp', 'flat': True},
+                {'src': syslogFile, 'dest': '/tmp/', 'flat': True},
+                {'src': sairedisRec, 'dest': '/tmp/', 'flat': True},
+                {'src': swssRec, 'dest': '/tmp/', 'flat': True},
             ],
         }
         for host, logs in logFiles.items():
             for log in logs:
                 host.fetch(**log)
 
-    def runRebootTestcase(self, prebootList=None, inbootList=None, prebootFiles=None):
+    def imageInstall(self, prebootList=None, inbootList=None, prebootFiles=None):
         '''
-        This method validates and prepare test bed for rebot test case. It runs the reboot test case using provided
-        test arguments
+        This method validates and prepares test bed for reboot test case.
         @param prebootList: list of operation to run before reboot process
         @param inbootList: list of operation to run during reboot prcoess
         @param prebootFiles: preboot files
@@ -381,17 +383,31 @@ class AdvancedReboot:
         # Handle mellanox platform
         self.__handleMellanoxDut()
 
+    def runRebootTest(self):
         # Run advanced-reboot.ReloadTest for item in preboot/inboot list
         for rebootOper in self.rebootData['sadList']:
             try:
-                self.__runPtfRunner(rebootOper)
+                result = self.__runPtfRunner(rebootOper)
             finally:
                 # always capture the test logs
                 self.__fetchTestLogs(rebootOper)
                 self.__clearArpAndFdbTables()
-
+            if not result:
+                return result
             if len(self.rebootData['sadList']) > 1:
                 time.sleep(TIME_BETWEEN_SUCCESSIVE_TEST_OPER)
+        return result
+
+    def runRebootTestcase(self, prebootList=None, inbootList=None, prebootFiles=None):
+        '''
+        This method validates and prepares test bed for reboot test case. It runs the reboot test case using provided
+        test arguments
+        @param prebootList: list of operation to run before reboot process
+        @param inbootList: list of operation to run during reboot prcoess
+        @param prebootFiles: preboot files
+        '''
+        self.imageInstall(prebootList, inbootList, prebootFiles)
+        return self.runRebootTest()
 
     def __runPtfRunner(self, rebootOper=None):
         '''
@@ -410,7 +426,7 @@ class AdvancedReboot:
         self.__updateAndRestartArpResponder(rebootOper)
 
         logger.info('Run advanced-reboot ReloadTest on the PTF host')
-        ptf_runner(
+        result = ptf_runner(
             self.ptfhost,
             "ptftests",
             "advanced-reboot.ReloadTest",
@@ -422,7 +438,7 @@ class AdvancedReboot:
                 "dut_password" : self.rebootData['dut_password'],
                 "dut_hostname" : self.rebootData['dut_hostname'],
                 "reboot_limit_in_seconds" : self.rebootLimit,
-                "reboot_type" :self.rebootType,
+                "reboot_type" : self.rebootType,
                 "portchannel_ports_file" : self.rebootData['portchannel_interfaces_file'],
                 "vlan_ports_file" : self.rebootData['vlan_interfaces_file'],
                 "ports_file" : self.rebootData['ports_file'],
@@ -442,8 +458,10 @@ class AdvancedReboot:
                 "vnet" : self.vnet,
                 "vnet_pkts" : self.vnetPkts,
             },
-            log_file=u'/tmp/advanced-reboot.ReloadTest.log'
+            log_file=u'/tmp/advanced-reboot.ReloadTest.log',
+            module_ignore_errors=self.moduleIgnoreErrors
         )
+        return result
 
     def __restorePrevImage(self):
         '''

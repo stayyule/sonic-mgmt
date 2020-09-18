@@ -9,12 +9,21 @@ from tests.common.helpers.platform_api import chassis, psu
 
 from platform_api_test_base import PlatformApiTestBase
 
+###################################################
+# TODO: Remove this after we transition to Python 3
+import sys
+if sys.version_info.major == 3:
+    STRING_TYPE = str
+else:
+    STRING_TYPE = basestring
+# END Remove this after we transition to Python 3
+###################################################
+
 
 logger = logging.getLogger(__name__)
 
 pytestmark = [
     pytest.mark.topology('any'),
-    pytest.mark.sanity_check(skip_sanity=True),
     pytest.mark.disable_loganalyzer  # disable automatic loganalyzer
 ]
 
@@ -36,6 +45,49 @@ class TestPsuApi(PlatformApiTestBase):
             except:
                 pytest.fail("num_psus is not an integer")
 
+    #
+    # Functions to test methods inherited from DeviceBase class
+    #
+
+    def test_get_name(self, duthost, localhost, platform_api_conn):
+        for i in range(self.num_psus):
+            name = psu.get_name(platform_api_conn, i)
+            if self.expect(name is not None, "Unable to retrieve PSU {} name".format(i)):
+                self.expect(isinstance(name, STRING_TYPE), "PSU {} name appears incorrect".format(i))
+        self.assert_expectations()
+
+    def test_get_presence(self, duthost, localhost, platform_api_conn):
+        for i in range(self.num_psus):
+            presence = psu.get_presence(platform_api_conn, i)
+            if self.expect(presence is not None, "Unable to retrieve PSU {} presence".format(i)):
+                if self.expect(isinstance(presence, bool), "PSU {} presence appears incorrect".format(i)):
+                    self.expect(presence is True, "PSU {} is not present".format(i))
+        self.assert_expectations()
+
+    def test_get_model(self, duthost, localhost, platform_api_conn):
+        for i in range(self.num_psus):
+            model = psu.get_model(platform_api_conn, i)
+            if self.expect(model is not None, "Unable to retrieve PSU {} model".format(i)):
+                self.expect(isinstance(model, STRING_TYPE), "PSU {} model appears incorrect".format(i))
+        self.assert_expectations()
+
+    def test_get_serial(self, duthost, localhost, platform_api_conn):
+        for i in range(self.num_psus):
+            serial = psu.get_serial(platform_api_conn, i)
+            if self.expect(serial is not None, "Unable to retrieve PSU {} serial number".format(i)):
+                self.expect(isinstance(serial, STRING_TYPE), "PSU {} serial number appears incorrect".format(i))
+        self.assert_expectations()
+
+    def test_get_status(self, duthost, localhost, platform_api_conn):
+        for i in range(self.num_psus):
+            status = psu.get_status(platform_api_conn, i)
+            if self.expect(status is not None, "Unable to retrieve PSU {} status".format(i)):
+                self.expect(isinstance(status, bool), "PSU {} status appears incorrect".format(i))
+        self.assert_expectations()
+
+    #
+    # Functions to test methods defined in PsuBase class
+    #
 
     def test_fans(self, duthost, localhost, platform_api_conn):
         ''' PSU fan test '''
@@ -118,7 +170,7 @@ class TestPsuApi(PlatformApiTestBase):
 
                 color_actual = psu.get_status_led(platform_api_conn, psu_id)
                 if self.expect(color_actual is not None, "Failed to retrieve status_led of PSU {}".format(psu_id)):
-                    if self.expect(isinstance(color_actual, str), "PSU {} status LED color appears incorrect".format(psu_id)):
+                    if self.expect(isinstance(color_actual, STRING_TYPE), "PSU {} status LED color appears incorrect".format(psu_id)):
                         self.expect(color == color_actual, "Status LED color incorrect (expected: {}, actual: {}) from PSU {}".format(color, color_actual, psu_id))
         self.assert_expectations()
 

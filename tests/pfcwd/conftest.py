@@ -24,6 +24,8 @@ def pytest_addoption(parser):
                      help='Warm reboot needs to be enabled or not')
     parser.addoption('--restore-time', action='store', type=int, default=3000,
                      help='PFC WD storm restore interval')
+    parser.addoption('--fake-storm', action='store', type=bool, default=True,
+                     help='Fake storm for most ports instead of using pfc gen')
 
 @pytest.fixture(scope="module")
 def setup_pfc_test(duthost, ptfhost, conn_graph_facts):
@@ -55,9 +57,6 @@ def setup_pfc_test(duthost, ptfhost, conn_graph_facts):
         vlan_ips = duthost.get_ip_in_range(num=1, prefix="{}/{}".format(vlan_addr, vlan_prefix), exclude_ips=[vlan_addr])['ansible_facts']['generated_ips']
         vlan_nw = vlan_ips[0].split('/')[0]
 
-        duthost.shell("ip route flush {}/32".format(vlan_nw))
-        duthost.shell("ip route add {}/32 dev {}".format(vlan_nw, vlan_dev))
-
     # build the port list for the test
     tp_handle = TrafficPorts(mg_facts, neighbors, vlan_nw)
     test_ports = tp_handle.build_port_list()
@@ -69,11 +68,20 @@ def setup_pfc_test(duthost, ptfhost, conn_graph_facts):
                    'selected_test_ports': selected_ports,
                    'pfc_timers' : set_pfc_timers(),
                    'neighbors': neighbors,
-                   'vlan': {'addr': vlan_addr,
-                            'prefix': vlan_prefix,
-                            'dev': vlan_dev},
                    'eth0_ip': dut_eth0_ip
                   }
+
+    if mg_facts['minigraph_vlans']:
+        setup_info['vlan'] = {'addr': vlan_addr,
+                              'prefix': vlan_prefix,
+                              'dev': vlan_dev
+                             }
+    else:
+        setup_info['vlan'] = None
+
+    # stop pfcwd
+    logger.info("--- Stopping Pfcwd ---")
+    duthost.command("pfcwd stop")
 
     # set poll interval
     duthost.command("pfcwd interval {}".format(setup_info['pfc_timers']['pfc_wd_poll_time']))

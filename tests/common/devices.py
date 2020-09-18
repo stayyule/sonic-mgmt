@@ -16,8 +16,26 @@ import ipaddress
 from multiprocessing.pool import ThreadPool
 from datetime import datetime
 
+from ansible import constants
+from ansible.plugins.loader import connection_loader
+
 from errors import RunAnsibleModuleFail
 from errors import UnsupportedAnsibleModule
+
+
+# HACK: This is a hack for issue https://github.com/Azure/sonic-mgmt/issues/1941 and issue
+# https://github.com/ansible/pytest-ansible/issues/47
+# Detailed root cause analysis of the issue: https://github.com/Azure/sonic-mgmt/issues/1941#issuecomment-670434790
+# Before calling callback function of plugins to return ansible module result, ansible calls the
+# ansible.executor.task_result.TaskResult.clean_copy method to remove some keys like 'failed' and 'skipped' in the
+# result dict. The keys to be removed are defined in module variable ansible.executor.task_result._IGNORE. The trick
+# of this hack is to override this pre-defined key list. When the 'failed' key is not included in the list, ansible
+# will not remove it before returning the ansible result to plugins (pytest_ansible in our case)
+try:
+    from ansible.executor import task_result
+    task_result._IGNORE = ('skipped', )
+except Exception as e:
+    logging.error("Hack for https://github.com/ansible/pytest-ansible/issues/47 failed: {}".format(repr(e)))
 
 
 class AnsibleHostBase(object):
@@ -29,21 +47,12 @@ class AnsibleHostBase(object):
     on the host.
     """
 
-    def __init__(self, ansible_adhoc, hostname, connection=None, become_user=None):
+    def __init__(self, ansible_adhoc, hostname, *args, **kwargs):
         if hostname == 'localhost':
             self.host = ansible_adhoc(connection='local', host_pattern=hostname)[hostname]
         else:
-            if connection is None:
-                if become_user is None:
-                    self.host = ansible_adhoc(become=True)[hostname]
-                else:
-                    self.host = ansible_adhoc(become=True, become_user=become_user)[hostname]
-            else:
-                logging.debug("connection {} for {}".format(connection, hostname))
-                if become_user is None:
-                    self.host = ansible_adhoc(become=True, connection=connection)[hostname]
-                else:
-                    self.host = ansible_adhoc(become=True, connection=connection, become_user=become_user)[hostname]
+            self.host = ansible_adhoc(become=True, *args, **kwargs)[hostname]
+            self.mgmt_ip = self.host.options["inventory_manager"].get_host(hostname).vars["ansible_host"]
         self.hostname = hostname
 
     def __getattr__(self, module_name):
@@ -116,8 +125,33 @@ class SonicHost(AnsibleHostBase):
 
     _DEFAULT_CRITICAL_SERVICES = ["swss", "syncd", "database", "teamd", "bgp", "pmon", "lldp", "snmp"]
 
-    def __init__(self, ansible_adhoc, hostname):
+    def __init__(self, ansible_adhoc, hostname,
+                 shell_user=None, shell_passwd=None):
         AnsibleHostBase.__init__(self, ansible_adhoc, hostname)
+
+        if shell_user and shell_passwd:
+            im = self.host.options['inventory_manager']
+            vm = self.host.options['variable_manager']
+            sonic_conn = vm.get_vars(
+                host=im.get_hosts(pattern='sonic')[0]
+                )['ansible_connection']
+            hostvars = vm.get_vars(host=im.get_host(hostname=self.hostname))
+            # parse connection options and reset those options with
+            # passed credentials
+            connection_loader.get(sonic_conn, class_only=True)
+            user_def = constants.config.get_configuration_definition(
+                "remote_user", "connection", sonic_conn
+                )
+            pass_def = constants.config.get_configuration_definition(
+                "password", "connection", sonic_conn
+                )
+            for user_var in (_['name'] for _ in user_def['vars']):
+                if user_var in hostvars:
+                    vm.extra_vars.update({user_var: shell_user})
+            for pass_var in (_['name'] for _ in pass_def['vars']):
+                if pass_var in hostvars:
+                    vm.extra_vars.update({pass_var: shell_passwd})
+
         self._facts = self._gather_facts()
         self._os_version = self._get_os_version()
 
@@ -136,7 +170,8 @@ class SonicHost(AnsibleHostBase):
                 "platform": "x86_64-arista_7050_qx32s",
                 "hwsku": "Arista-7050-QX-32S",
                 "asic_type": "broadcom",
-                "num_npu": 1
+                "num_asic": 1,
+                "router_mac": "52:54:00:f0:ac:9d",
             }
         """
 
@@ -179,8 +214,8 @@ class SonicHost(AnsibleHostBase):
             not actually modify any services running on the device.
         """
 
-        if self.facts["num_npu"] > 1:
-            self._critical_services = self._generate_critical_services_for_multi_npu(var)
+        if self.facts["num_asic"] > 1:
+            self._critical_services = self._generate_critical_services_for_multi_asic(var)
         else:
             self._critical_services = var
 
@@ -200,32 +235,40 @@ class SonicHost(AnsibleHostBase):
 
         facts = dict()
         facts.update(self._get_platform_info())
-        facts["num_npu"] = self._get_npu_count(facts["platform"])
+        facts["num_asic"] = self._get_asic_count(facts["platform"])
+        facts["router_mac"] = self._get_router_mac()
 
         logging.debug("Gathered SonicHost facts: %s" % json.dumps(facts))
         return facts
 
-    def _get_npu_count(self, platform):
+    def _get_asic_count(self, platform):
         """
-        Gets the number of npus for this device.
+        Gets the number of asics for this device.
         """
-
+        num_asic = 1
         asic_conf_file_path = os.path.join("/usr/share/sonic/device", platform, "asic.conf")
         try:
             output = self.shell("cat {}".format(asic_conf_file_path))["stdout_lines"]
             logging.debug(output)
 
             for line in output:
-                num_npu = line.split("=", 1)[1].strip()
+                key, value = line.split("=")
+                if key.strip().upper() == "NUM_ASIC":
+                    num_asic = value.strip()
+                    break
 
-            logging.debug("num_npu = %s" % num_npu)
-            return int(num_npu)
+            logging.debug("num_asic = %s" % num_asic)
+
+            return int(num_asic)
         except:
-            return 1
+            return int(num_asic)
 
-    def _generate_critical_services_for_multi_npu(self, services):
+    def _get_router_mac(self):
+        return self.command("sonic-cfggen -d -v 'DEVICE_METADATA.localhost.mac'")["stdout_lines"][0].decode("utf-8")
+
+    def _generate_critical_services_for_multi_asic(self, services):
         """
-        Generates a fully-qualified list of critical services for multi-npu platforms, based on a
+        Generates a fully-qualified list of critical services for multi-asic platforms, based on a
         base list of services.
 
         Example:
@@ -234,9 +277,9 @@ class SonicHost(AnsibleHostBase):
 
         m_service = []
         for service in services:
-            for npu in self.facts["num_npu"]:
-                npu_service = service + npu
-                m_service.insert(npu, npu_service)
+            for asic in range(self.facts["num_asic"]):
+                asic_service = service + str(asic)
+                m_service.insert(asic, asic_service)
         return m_service
 
     def _get_platform_info(self):
@@ -253,6 +296,22 @@ class SonicHost(AnsibleHostBase):
                 result["hwsku"] = line.split(":")[1].strip()
             elif line.startswith("ASIC:"):
                 result["asic_type"] = line.split(":")[1].strip()
+
+        if result["platform"]:
+            platform_file_path = os.path.join("/usr/share/sonic/device", result["platform"], "platform.json")
+
+            try:
+                out = self.command("cat {}".format(platform_file_path))
+                platform_info = json.loads(out["stdout"])
+                for key, value in platform_info.iteritems():
+                    result[key] = value
+
+            except Exception:
+                # if platform.json does not exist, then it's not added currently for certain platforms
+                # eventually all the platforms should have the platform.json
+                logging.debug("platform.json is not available for this platform, "
+                              + "DUT facts will not contain complete platform information.")
+
         return result
 
     def _get_os_version(self):
@@ -317,6 +376,36 @@ class SonicHost(AnsibleHostBase):
         logging.debug("Status of critical services: %s" % str(result))
         return all(result.values())
 
+    def get_critical_group_and_process_lists(self, container_name):
+        """
+        @summary: Get critical group and process lists by parsing the
+                  critical_processes file in the specified container
+        @return: Two lists which include the critical groups and critical processes respectively
+        """
+        critical_group_list = []
+        critical_process_list = []
+        succeeded = True
+
+        file_content = self.shell("docker exec {} bash -c '[ -f /etc/supervisor/critical_processes ] \
+                && cat /etc/supervisor/critical_processes'".format(container_name), module_ignore_errors=True)
+        for line in file_content["stdout_lines"]:
+            line_info = line.strip().split(':')
+            if len(line_info) != 2:
+                succeeded = False
+                break
+
+            identifier_key = line_info[0].strip()
+            identifier_value = line_info[1].strip()
+            if identifier_key == "group" and identifier_value:
+                critical_group_list.append(identifier_value)
+            elif identifier_key == "program" and identifier_value:
+                critical_process_list.append(identifier_value)
+            else:
+                succeeded = False
+                break
+
+        return critical_group_list, critical_process_list, succeeded
+
     def critical_process_status(self, service):
         """
         @summary: Check whether critical process status of a service.
@@ -326,6 +415,7 @@ class SonicHost(AnsibleHostBase):
         result = {'status': True}
         result['exited_critical_process'] = []
         result['running_critical_process'] = []
+        critical_group_list = []
         critical_process_list = []
 
         # return false if the service is not started
@@ -334,12 +424,10 @@ class SonicHost(AnsibleHostBase):
             result['status'] = False
             return result
 
-        # get critical process list for the service
-        output = self.command("docker exec {} bash -c '[ -f /etc/supervisor/critical_processes ] && cat /etc/supervisor/critical_processes'".format(service), module_ignore_errors=True)
-        for l in output['stdout'].split():
-            # If ':' exists, the second field is got. Otherwise the only field is got.
-            critical_process_list.append(l.split(':')[-1].rstrip())
-        if len(critical_process_list) == 0:
+        # get critical group and process lists for the service
+        critical_group_list, critical_process_list, succeeded = self.get_critical_group_and_process_lists(service)
+        if succeeded == False:
+            result['status'] = False
             return result
 
         # get process status for the service
@@ -349,11 +437,11 @@ class SonicHost(AnsibleHostBase):
         for l in output['stdout_lines']:
             (pname, status, info) = re.split("\s+", l, 2)
             if status != "RUNNING":
-                if pname in critical_process_list:
+                if pname in critical_group_list or pname in critical_process_list:
                     result['exited_critical_process'].append(pname)
                     result['status'] = False
             else:
-                if pname in critical_process_list:
+                if pname in critical_group_list or pname in critical_process_list:
                     result['running_critical_process'].append(pname)
 
         return result
@@ -406,7 +494,7 @@ class SonicHost(AnsibleHostBase):
         @return: dictionary of { service_name1 : state1, ... ... }
         """
         # some services are meant to have a short life span or not part of the daemons
-        exemptions = ['lm-sensors', 'start.sh', 'rsyslogd']
+        exemptions = ['lm-sensors', 'start.sh', 'rsyslogd', 'start', 'dependent-startup']
 
         daemons = self.shell('docker exec pmon supervisorctl status')['stdout_lines']
 
@@ -442,11 +530,11 @@ class SonicHost(AnsibleHostBase):
         logging.info("Pmon daemon state list for this platform is %s" % str(daemon_states))
         return daemon_states
 
-    def num_npus(self):
+    def num_asics(self):
         """
         return the number of NPUs on the DUT
         """
-        return self.facts["num_npu"]
+        return self.facts["num_asic"]
 
     def get_syncd_docker_names(self):
         """
@@ -454,22 +542,22 @@ class SonicHost(AnsibleHostBase):
         for a single NPU dut the list will have only "syncd" in it
         """
         syncd_docker_names = []
-        if self.facts["num_npu"] == 1:
+        if self.facts["num_asic"] == 1:
             syncd_docker_names.append("syncd")
         else:
-            num_npus = int(self.facts["num_npu"])
-            for npu in range(0,num_npus):
-                syncd_docker_names.append("syncd{}".format(npu))
+            num_asics = int(self.facts["num_asic"])
+            for asic in range(0,num_asics):
+                syncd_docker_names.append("syncd{}".format(asic))
         return syncd_docker_names
 
     def get_swss_docker_names(self):
         swss_docker_names = []
-        if self.facts["num_npu"] == 1:
+        if self.facts["num_asic"] == 1:
             swss_docker_names.append("swss")
         else:
-            num_npus = self.facts["num_npu"]
-            for npu in range(0,num_npus):
-                swss_docker_names.append("swss{}".format(npu))
+            num_asics = self.facts["num_asic"]
+            for asic in range(0,num_asics):
+                swss_docker_names.append("swss{}".format(asic))
         return swss_docker_names
 
     def get_up_time(self):
@@ -533,67 +621,132 @@ class SonicHost(AnsibleHostBase):
 
     def get_ip_route_info(self, dstip):
         """
-        @summary: return route information for a destionation IP
+        @summary: return route information for a destionation. The destination coulb an ip address or ip prefix.
 
-        @param dstip: destination IP (either ipv4 or ipv6)
+        @param dstip: destination. either ip_address or ip_network
 
-============ 4.19 kernel ==============
-admin@vlab-01:~$ ip route list match 0.0.0.0
-default proto bgp src 10.1.0.32 metric 20
-        nexthop via 10.0.0.57 dev PortChannel0001 weight 1
-        nexthop via 10.0.0.59 dev PortChannel0002 weight 1
-        nexthop via 10.0.0.61 dev PortChannel0003 weight 1
-        nexthop via 10.0.0.63 dev PortChannel0004 weight 1
+        Please beware: if dstip is an ip network, you will receive all ECMP nexthops
+        But if dstip is an ip address, only one nexthop will be returned, the one which is going to be used to send a packet to the destination.
 
-admin@vlab-01:~$ ip -6 route list match ::
-default proto bgp src fc00:1::32 metric 20
-        nexthop via fc00::72 dev PortChannel0001 weight 1
-        nexthop via fc00::76 dev PortChannel0002 weight 1
-        nexthop via fc00::7a dev PortChannel0003 weight 1
-        nexthop via fc00::7e dev PortChannel0004 weight 1 pref medium
+        Exanples:
+----------------
+get_ip_route_info(ipaddress.ip_address(unicode("192.168.8.0")))
+returns {'set_src': IPv4Address(u'10.1.0.32'), 'nexthops': [(IPv4Address(u'10.0.0.13'), u'PortChannel0004')]}
 
-============ 4.9 kernel ===============
-admin@vlab-01:~$ ip route list match 0.0.0.0
+raw data
+192.168.8.0 via 10.0.0.13 dev PortChannel0004 src 10.1.0.32
+    cache
+----------------
+get_ip_route_info(ipaddress.ip_network(unicode("192.168.8.0/25")))
+returns {'set_src': IPv4Address(u'10.1.0.32'), 'nexthops': [(IPv4Address(u'10.0.0.1'), u'PortChannel0001'), (IPv4Address(u'10.0.0.5'), u'PortChannel0002'), (IPv4Address(u'10.0.0.9'), u'PortChannel0003'), (IPv4Address(u'10.0.0.13'), u'PortChannel0004')]}
+
+raw data
+192.168.8.0/25 proto 186 src 10.1.0.32 metric 20
+        nexthop via 10.0.0.1  dev PortChannel0001 weight 1
+        nexthop via 10.0.0.5  dev PortChannel0002 weight 1
+        nexthop via 10.0.0.9  dev PortChannel0003 weight 1
+        nexthop via 10.0.0.13  dev PortChannel0004 weight 1
+----------------
+get_ip_route_info(ipaddress.ip_address(unicode("20c0:a818::")))
+returns {'set_src': IPv6Address(u'fc00:1::32'), 'nexthops': [(IPv6Address(u'fc00::1a'), u'PortChannel0004')]}
+
+raw data
+20c0:a818:: from :: via fc00::1a dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pref medium
+----------------
+get_ip_route_info(ipaddress.ip_network(unicode("20c0:a818::/64")))
+returns {'set_src': IPv6Address(u'fc00:1::32'), 'nexthops': [(IPv6Address(u'fc00::2'), u'PortChannel0001'), (IPv6Address(u'fc00::a'), u'PortChannel0002'), (IPv6Address(u'fc00::12'), u'PortChannel0003'), (IPv6Address(u'fc00::1a'), u'PortChannel0004')]}
+
+raw data
+20c0:a818::/64 via fc00::2 dev PortChannel0001 proto 186 src fc00:1::32 metric 20  pref medium
+20c0:a818::/64 via fc00::a dev PortChannel0002 proto 186 src fc00:1::32 metric 20  pref medium
+20c0:a818::/64 via fc00::12 dev PortChannel0003 proto 186 src fc00:1::32 metric 20  pref medium
+20c0:a818::/64 via fc00::1a dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pref medium
+----------------
+get_ip_route_info(ipaddress.ip_network(unicode("0.0.0.0/0")))
+returns {'set_src': IPv4Address(u'10.1.0.32'), 'nexthops': [(IPv4Address(u'10.0.0.1'), u'PortChannel0001'), (IPv4Address(u'10.0.0.5'), u'PortChannel0002'), (IPv4Address(u'10.0.0.9'), u'PortChannel0003'), (IPv4Address(u'10.0.0.13'), u'PortChannel0004')]}
+
+raw data
 default proto 186 src 10.1.0.32 metric 20
-        nexthop via 10.0.0.57  dev PortChannel0001 weight 1
-        nexthop via 10.0.0.59  dev PortChannel0002 weight 1
-        nexthop via 10.0.0.61  dev PortChannel0003 weight 1
-        nexthop via 10.0.0.63  dev PortChannel0004 weight 1
+        nexthop via 10.0.0.1  dev PortChannel0001 weight 1
+        nexthop via 10.0.0.5  dev PortChannel0002 weight 1
+        nexthop via 10.0.0.9  dev PortChannel0003 weight 1
+        nexthop via 10.0.0.13  dev PortChannel0004 weight 1
+----------------
+get_ip_route_info(ipaddress.ip_network(unicode("::/0")))
+returns {'set_src': IPv6Address(u'fc00:1::32'), 'nexthops': [(IPv6Address(u'fc00::2'), u'PortChannel0001'), (IPv6Address(u'fc00::a'), u'PortChannel0002'), (IPv6Address(u'fc00::12'), u'PortChannel0003'), (IPv6Address(u'fc00::1a'), u'PortChannel0004')]}
 
-admin@vlab-01:~$ ip -6 route list match ::
-default via fc00::72 dev PortChannel0001 proto 186 src fc00:1::32 metric 20  pref medium
-default via fc00::76 dev PortChannel0002 proto 186 src fc00:1::32 metric 20  pref medium
-default via fc00::7a dev PortChannel0003 proto 186 src fc00:1::32 metric 20  pref medium
-default via fc00::7e dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pref medium
-
+raw data
+default via fc00::2 dev PortChannel0001 proto 186 src fc00:1::32 metric 20  pref medium
+default via fc00::a dev PortChannel0002 proto 186 src fc00:1::32 metric 20  pref medium
+default via fc00::12 dev PortChannel0003 proto 186 src fc00:1::32 metric 20  pref medium
+default via fc00::1a dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pref medium
+----------------
         """
-
-        if dstip.version == 4:
-            rt = self.command("ip route list match {}".format(dstip))['stdout_lines']
-        else:
-            rt = self.command("ip -6 route list match {}".format(dstip))['stdout_lines']
-
-        logging.info("route raw info for {}: {}".format(dstip, rt))
 
         rtinfo = {'set_src': None, 'nexthops': [] }
 
-        # parse set_src
-        m = re.match(r"^default proto (bgp|186) src (\S+)", rt[0])
-        m1 = re.match(r"^default via (\S+) dev (\S+) proto 186 src (\S+)", rt[0])
-        if m:
-            rtinfo['set_src'] = ipaddress.ip_address(m.group(2))
-        elif m1:
-            rtinfo['set_src'] = ipaddress.ip_address(m1.group(3))
+        if isinstance(dstip, ipaddress.IPv4Network) or isinstance(dstip, ipaddress.IPv6Network):
+            if dstip.version == 4:
+                rt = self.command("ip route list exact {}".format(dstip))['stdout_lines']
+            else:
+                rt = self.command("ip -6 route list exact {}".format(dstip))['stdout_lines']
 
-        # parse nexthops
-        for l in rt:
-            m = re.search(r"(default|nexthop)\s+via\s+(\S+)\s+dev\s+(\S+)", l)
+            logging.info("route raw info for {}: {}".format(dstip, rt))
+
+            if len(rt) == 0:
+                return rtinfo
+
+            # parse set_src
+            m = re.match(r"^(default|\S+) proto (zebra|bgp|186) src (\S+)", rt[0])
+            m1 = re.match(r"^(default|\S+) via (\S+) dev (\S+) proto (zebra|bgp|186) src (\S+)", rt[0])
             if m:
-                rtinfo['nexthops'].append((ipaddress.ip_address(m.group(2)), m.group(3)))
+                rtinfo['set_src'] = ipaddress.ip_address(unicode(m.group(3)))
+            elif m1:
+                rtinfo['set_src'] = ipaddress.ip_address(unicode(m1.group(5)))
+
+            # parse nexthops
+            for l in rt:
+                m = re.search(r"(default|nexthop|\S+)\s+via\s+(\S+)\s+dev\s+(\S+)", l)
+                if m:
+                    rtinfo['nexthops'].append((ipaddress.ip_address(unicode(m.group(2))), unicode(m.group(3))))
+
+        elif isinstance(dstip, ipaddress.IPv4Address) or isinstance(dstip, ipaddress.IPv6Address):
+            rt = self.command("ip route get {}".format(dstip))['stdout_lines']
+            logging.info("route raw info for {}: {}".format(dstip, rt))
+
+            if len(rt) == 0:
+                return rtinfo
+
+            m = re.match(".+\s+via\s+(\S+)\s+.*dev\s+(\S+)\s+.*src\s+(\S+)\s+", rt[0])
+            if m:
+                nexthop_ip = ipaddress.ip_address(unicode(m.group(1)))
+                gw_if = m.group(2)
+                rtinfo['nexthops'].append((nexthop_ip, gw_if))
+                rtinfo['set_src'] = ipaddress.ip_address(unicode(m.group(3)))
+        else:
+            raise ValueError("Wrong type of dstip")
 
         logging.info("route parsed info for {}: {}".format(dstip, rtinfo))
-
         return rtinfo
+
+    def check_default_route(self, ipv4=True, ipv6=True):
+        """
+        @summary: return default route status
+
+        @param ipv4: check ipv4 default
+        @param ipv6: check ipv6 default
+        """
+        if ipv4:
+            rtinfo_v4 = self.get_ip_route_info(ipaddress.ip_network(u'0.0.0.0/0'))
+            if len(rtinfo_v4['nexthops']) == 0:
+                return False
+
+        if ipv6:
+            rtinfo_v6 = self.get_ip_route_info(ipaddress.ip_network(u'::/0'))
+            if len(rtinfo_v6['nexthops']) == 0:
+                return False
+
+        return True
 
     def get_bgp_neighbor_info(self, neighbor_ip):
         """
@@ -610,6 +763,37 @@ default via fc00::7e dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pre
         logging.info("bgp neighbor {} info {}".format(neighbor_ip, nbinfo))
 
         return nbinfo[str(neighbor_ip)]
+
+    def get_bgp_statistic(self, stat):
+        """
+        Get the named bgp statistic
+
+        Args: stat - name of statistic
+
+        Returns: statistic value or None if not found
+
+        """
+        ret = None
+        bgp_facts = self.bgp_facts()['ansible_facts']
+        if stat in bgp_facts['bgp_statistics']:
+            ret = bgp_facts['bgp_statistics'][stat]
+        return ret;
+        
+    def check_bgp_statistic(self, stat, value):
+        val = self.get_bgp_statistic(stat)
+        return val == value
+
+    def get_bgp_neighbors(self):
+        """
+        Get a diction of BGP neighbor states
+
+        Args: None
+
+        Returns: dictionary { (neighbor_ip : info_dict)* }
+
+        """
+        bgp_facts = self.bgp_facts()['ansible_facts']
+        return bgp_facts['bgp_neighbors']
 
     def check_bgp_session_state(self, neigh_ips, state="established"):
         """
@@ -657,6 +841,25 @@ default via fc00::7e dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pre
 
         return None
 
+    def get_container_autorestart_states(self):
+        """
+        @summary: Get container names and their autorestart states by analyzing
+                  the command output of "show feature autorestart"
+        @return:  A dictionary where keys are the names of containers which have the
+                  autorestart feature implemented and values are the autorestart feature
+                  state for that container
+        """
+        container_autorestart_states = {}
+
+        show_cmd_output = self.shell("show feature autorestart")
+        for line in show_cmd_output["stdout_lines"]:
+            container_name = line.split()[0].strip()
+            container_state = line.split()[1].strip()
+            if container_state in ["enabled", "disabled"]:
+                container_autorestart_states[container_name] = container_state
+
+        return container_autorestart_states
+
     def get_feature_status(self):
         """
         Gets the list of features and states
@@ -666,8 +869,12 @@ default via fc00::7e dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pre
             bool: status obtained successfully (True | False)
         """
         feature_status = {}
-        command_output = self.shell('show features', module_ignore_errors=True)
-        if command_output['rc'] != 0:
+        command_list = ['show feature status', 'show features']
+        for cmd in command_list:
+            command_output = self.shell(cmd, module_ignore_errors=True)
+            if command_output['rc'] == 0:
+                break
+        else:
             return feature_status, False
 
         features_stdout = command_output['stdout_lines']
@@ -677,6 +884,139 @@ default via fc00::7e dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pre
             r = result.split()
             feature_status[r[0]] = r[1]
         return feature_status, True
+
+    def _parse_column_positions(self, sep_line, sep_char='-'):
+        """Parse the position of each columns in the command output
+
+        Args:
+            sep_line: The output line separating actual data and column headers
+            sep_char: The character used in separation line. Defaults to '-'.
+
+        Returns:
+            Returns a list. Each item is a tuple with two elements. The first element is start position of a column. The
+            second element is the end position of the column.
+        """
+        prev = ' ',
+        positions = []
+        for pos, char in enumerate(sep_line + ' '):
+            if char == sep_char:
+                if char != prev:
+                    left = pos
+            else:
+                if char != prev:
+                    right = pos
+                    positions.append((left, right))
+            prev = char
+        return positions
+
+
+    def _parse_show(self, output_lines):
+
+        result = []
+
+        sep_line_pattern = re.compile(r"^( *-+ *)+$")
+        sep_line_found = False
+        for idx, line in enumerate(output_lines):
+            if sep_line_pattern.match(line):
+                sep_line_found = True
+                header_line = output_lines[idx-1]
+                sep_line = output_lines[idx]
+                content_lines = output_lines[idx+1:]
+                break
+
+        if not sep_line_found:
+            logging.error('Failed to find separation line in the show command output')
+            return result
+
+        try:
+            positions = self._parse_column_positions(sep_line)
+        except Exception as e:
+            logging.error('Possibly bad command output, exception: {}'.format(repr(e)))
+            return result
+
+        headers = []
+        for (left, right) in positions:
+            headers.append(header_line[left:right].strip().lower())
+
+        for content_line in content_lines:
+            item = {}
+            for idx, (left, right) in enumerate(positions):
+                k = headers[idx]
+                v = content_line[left:right].strip()
+                item[k] = v
+            result.append(item)
+
+        return result
+
+    def show_and_parse(self, show_cmd, **kwargs):
+        """Run a show command and parse the output using a generic pattern.
+
+        This method can adapt to the column changes as long as the output format follows the pattern of
+        'show interface status'.
+
+        The key is to have a line of headers. Then a separation line with '-' under each column header. Both header and
+        column content are within the width of '-' chars for that column.
+
+        For example, part of the output of command 'show interface status':
+
+        admin@str-msn2700-02:~$ show interface status
+              Interface            Lanes    Speed    MTU    FEC    Alias             Vlan    Oper    Admin             Type    Asym PFC
+        ---------------  ---------------  -------  -----  -----  -------  ---------------  ------  -------  ---------------  ----------
+              Ethernet0          0,1,2,3      40G   9100    N/A     etp1  PortChannel0002      up       up   QSFP+ or later         off
+              Ethernet4          4,5,6,7      40G   9100    N/A     etp2  PortChannel0002      up       up   QSFP+ or later         off
+              Ethernet8        8,9,10,11      40G   9100    N/A     etp3  PortChannel0005      up       up   QSFP+ or later         off
+        ...
+
+        The parsed example will be like:
+            [{
+                "oper": "up",
+                "lanes": "0,1,2,3",
+                "fec": "N/A",
+                "asym pfc": "off",
+                "admin": "up",
+                "type": "QSFP+ or later",
+                "vlan": "PortChannel0002",
+                "mtu": "9100",
+                "alias": "etp1",
+                "interface": "Ethernet0",
+                "speed": "40G"
+              },
+              {
+                "oper": "up",
+                "lanes": "4,5,6,7",
+                "fec": "N/A",
+                "asym pfc": "off",
+                "admin": "up",                                                                                                                                                                                                                             "type": "QSFP+ or later",                                                                                                                                                                                                                  "vlan": "PortChannel0002",                                                                                                                                                                                                                 "mtu": "9100",                                                                                                                                                                                                                             "alias": "etp2",
+                "interface": "Ethernet4",
+                "speed": "40G"
+              },
+              {
+                "oper": "up",
+                "lanes": "8,9,10,11",
+                "fec": "N/A",
+                "asym pfc": "off",
+                "admin": "up",
+                "type": "QSFP+ or later",
+                "vlan": "PortChannel0005",
+                "mtu": "9100",
+                "alias": "etp3",
+                "interface": "Ethernet8",
+                "speed": "40G"
+              },
+              ...
+            ]
+
+        Args:
+            show_cmd: The show command that will be executed.
+
+        Returns:
+            Return the parsed output of the show command in a list of dictionary. Each list item is a dictionary,
+            corresponding to one content line under the header in the output. Keys of the dictionary are the column
+            headers in lowercase.
+        """
+        output = self.shell(show_cmd, **kwargs)["stdout_lines"]
+        return self._parse_show(output)
+
 
 class EosHost(AnsibleHostBase):
     """
@@ -887,6 +1227,54 @@ class OnyxHost(AnsibleHostBase):
             raise Exception("Unable to execute template\n{}".format(res["localhost"]["stdout"]))
 
 
+class IxiaHost (AnsibleHostBase):
+    """ This class is a place-holder for running ansible module on Ixia
+    fanout devices in future (TBD).
+    """
+    def __init__ (self, ansible_adhoc, os, hostname, device_type) :
+        """ Initializing Ixia fanout host for using ansible modules.
+
+        Note: Right now, it is just a place holder.
+
+        Args:
+            ansible_adhoc :The pytest-ansible fixture
+            os (str): The os type of Ixia Fanout.
+            hostname (str): The Ixia fanout host-name
+            device_type (str): The Ixia fanout device type.
+        """
+
+        self.ansible_adhoc = ansible_adhoc
+        self.os            = os
+        self.hostname      = hostname
+        self.device_type   = device_type
+        super().__init__(IxiaHost, self)
+
+    def get_host_name (self):
+        """Returns the Ixia hostname
+
+        Args:
+            This function takes no argument.
+        """
+        return self.hostname
+
+    def get_os (self) :
+        """Returns the os type of the ixia device.
+
+        Args:
+            This function takes no argument.
+        """
+        return self.os
+
+    def execute (self, cmd) :
+        """Execute a given command on ixia fanout host.
+
+        Args:
+           cmd (str): Command to be executed.
+        """
+        if (self.os == 'ixia') :
+            eval(cmd)
+
+
 class FanoutHost():
     """
     @summary: Class for Fanout switch
@@ -901,14 +1289,16 @@ class FanoutHost():
         self.fanout_to_host_port_map = {}
         if os == 'sonic':
             self.os = os
-            self.host = SonicHost(ansible_adhoc, hostname)
+            self.host = SonicHost(ansible_adhoc, hostname,
+                                  shell_user=shell_user,
+                                  shell_passwd=shell_passwd)
         elif os == 'onyx':
             self.os = os
             self.host = OnyxHost(ansible_adhoc, hostname, user, passwd)
         elif os == 'ixia':
             # TODO: add ixia chassis abstraction
             self.os = os
-            self.host = None
+            self.host = IxiaHost(ansible_adhoc, os, hostname, device_type)
         else:
             # Use eos host if the os type is unknown
             self.os = 'eos'

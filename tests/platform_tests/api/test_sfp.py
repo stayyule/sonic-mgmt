@@ -9,10 +9,19 @@ from tests.common.helpers.platform_api import chassis, sfp
 
 from platform_api_test_base import PlatformApiTestBase
 
+###################################################
+# TODO: Remove this after we transition to Python 3
+import sys
+if sys.version_info.major == 3:
+    STRING_TYPE = str
+else:
+    STRING_TYPE = basestring
+# END Remove this after we transition to Python 3
+###################################################
+
 logger = logging.getLogger(__name__)
 
 pytestmark = [
-    pytest.mark.sanity_check(skip_sanity=True),
     pytest.mark.disable_loganalyzer,  # disable automatic loganalyzer
     pytest.mark.topology('any')
 ]
@@ -105,7 +114,7 @@ class TestSfpApi(PlatformApiTestBase):
         for i in range(self.num_sfps):
             name = sfp.get_name(platform_api_conn, i)
             if self.expect(name is not None, "Unable to retrieve transceiver {} name".format(i)):
-                self.expect(isinstance(name, str), "Transceiver {} name appears incorrect".format(i))
+                self.expect(isinstance(name, STRING_TYPE), "Transceiver {} name appears incorrect".format(i))
         self.assert_expectations()
 
     def test_get_presence(self, duthost, localhost, platform_api_conn):
@@ -120,14 +129,14 @@ class TestSfpApi(PlatformApiTestBase):
         for i in range(self.num_sfps):
             model = sfp.get_model(platform_api_conn, i)
             if self.expect(model is not None, "Unable to retrieve transceiver {} model".format(i)):
-                self.expect(isinstance(model, str), "Transceiver {} model appears incorrect".format(i))
+                self.expect(isinstance(model, STRING_TYPE), "Transceiver {} model appears incorrect".format(i))
         self.assert_expectations()
 
     def test_get_serial(self, duthost, localhost, platform_api_conn):
         for i in range(self.num_sfps):
             serial = sfp.get_serial(platform_api_conn, i)
             if self.expect(serial is not None, "Unable to retrieve transceiver {} serial number".format(i)):
-                self.expect(isinstance(serial, str), "Transceiver {} serial number appears incorrect".format(i))
+                self.expect(isinstance(serial, STRING_TYPE), "Transceiver {} serial number appears incorrect".format(i))
         self.assert_expectations()
 
     def test_get_status(self, duthost, localhost, platform_api_conn):
