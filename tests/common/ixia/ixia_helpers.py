@@ -10,8 +10,12 @@ This module also contains a definition of a simple helper class
 chassis instead of reading it from fanout_graph_facts fixture.
 """
 
-from tests.common.reboot import logger
+from common.reboot import logger
 from ixnetwork_restpy import SessionAssistant, Files
+import pandas as pd
+from collections import OrderedDict
+import paramiko
+import os, sys, math
 
 class IxiaFanoutManager () :
     """Class for managing multiple chassis and extracting the information 
@@ -108,7 +112,8 @@ class IxiaFanoutManager () :
         self.fanout_list = []
         self.last_device_connection_details = None
         self.current_ixia_port_list = None
-        self.ip_address = '0.0.0.0' 
+        self.ip_address = '0.0.0.0'
+        CurDutCmdList = [] 
         for i in fanout_data.keys() :
             self.fanout_list.append(fanout_data[i])
 
@@ -215,9 +220,20 @@ class IxiaFanoutManager () :
             }
             retval.append(dict_element)   
 
-        return retval 
+        return retval
+    
+    def get_port_list(self):
+        retval = []
+        for port in self.current_ixia_port_list:   
+            info_list = port.split('/')
+            chassis_ip = info_list[0]
+            card_id = info_list[1].replace('Card', '')
+            port_id = info_list[2].replace('Port', '')
+            retval.append([chassis_ip, card_id, port_id])   
 
+        return retval
 
+    
 def clean_configuration(session) :
     """Clean up the configurations cteated in IxNetwork API server.
         
@@ -375,12 +391,17 @@ def start_protocols(session):
     Returns:
         None    
     """ 
-    ixnetwork = session.Ixnetwork
-    ixnetwork.StartAllProtocols(Arg1='sync')
-    protocolSummary = session.StatViewAssistant('Protocols Summary')
-    protocolSummary.CheckCondition('Sessions Not Started', protocolSummary.EQUAL, 0)
-    protocolSummary.CheckCondition('Sessions Down', protocolSummary.EQUAL, 0)
-    logger.info(protocolSummary)
+    try:
+        ixnetwork = session.Ixnetwork
+        ixnetwork.StartAllProtocols(Arg1='sync')
+        logger_msg(u'等待协议建立完成，检查协议状态和数量是否正确。')
+        protocolSummary = session.StatViewAssistant('Protocols Summary')
+        protocolSummary.CheckCondition('Sessions Not Started', protocolSummary.EQUAL, 0)
+        protocolSummary.CheckCondition('Sessions Down', protocolSummary.EQUAL, 0)
+        #logger.info(protocolSummary)
+    except Exception as e:
+        logger.error(e)
+        logger_msg(u'协议开启失败，请检查配置', 'ERROR')
 
 
 def stop_protocols(session) :
@@ -393,8 +414,12 @@ def stop_protocols(session) :
     Returns:
         None
     """
-    ixnetwork = session.Ixnetwork
-    ixnetwork.StopAllProtocols(Arg1='sync')
+    try:
+        ixnetwork = session.Ixnetwork
+        ixnetwork.StopAllProtocols(Arg1='sync')
+    except Exception as e:
+        logger.error(e)
+        logger_msg(u'停止协议失败，请检查配置', 'ERROR')
 
 
 def get_traffic_statistics(session, stat_view_name='Flow Statistics'):
@@ -408,11 +433,33 @@ def get_traffic_statistics(session, stat_view_name='Flow Statistics'):
     Returns:
         traffic statistics dictionary. 
     """
-    ixnetwork = session.Ixnetwork
-    traffic_statistics = session.StatViewAssistant(stat_view_name)
-    ixnetwork.info('{}\n'.format(traffic_statistics))
-    return traffic_statistics
+    try:
+        ixnetwork = session.Ixnetwork
+        traffic_statistics = session.StatViewAssistant(stat_view_name)
+        #ixnetwork.info('{}\n'.format(traffic_statistics))
+        return traffic_statistics
+    except Exception as e:
+        logger.error(e)
+        logger_msg(u'获取流量结果数据失败，请检查配置', 'ERROR')
 
+def get_statistics(session, stat_view_name='Protocols Summary'):
+    """This function fetches the traffic statistics information.
+       
+    Args:
+        session (obj) : IxNetwork session object.
+        stat_view_name (str, optional): Statistics view name. Default 
+            value is 'Flow Statistics'
+
+    Returns:
+        traffic statistics dictionary. 
+    """
+    try:
+        ixnetwork = session.Ixnetwork
+        statistics = session.StatViewAssistant(stat_view_name)
+        return statistics
+    except Exception as e:
+        logger.error(e)
+        logger_msg(u'获取结果数据失败，请检查配置', 'ERROR')
 
 def stop_traffic(session):
     """ This function stops all the IxNetwork traffic items configured 
@@ -423,8 +470,12 @@ def stop_traffic(session):
     Returns:
         None.   
     """
-    ixnetwork = session.Ixnetwork
-    ixnetwork.Traffic.StopStatelessTrafficBlocking()
+    try:
+        ixnetwork = session.Ixnetwork
+        ixnetwork.Traffic.StopStatelessTrafficBlocking()
+    except Exception as e:
+        logger.error(e)
+        logger_msg(u'停止流量失败，请检查配置', 'ERROR')
 
 
 def start_traffic(session):
@@ -436,12 +487,15 @@ def start_traffic(session):
     Returns:
         None.   
     """
-    ixnetwork = session.Ixnetwork
-    """ Apply traffic to hardware """
-    ixnetwork.Traffic.Apply()
-    """ Run traffic """
-    ixnetwork.Traffic.StartStatelessTrafficBlocking()
-
+    try:
+        ixnetwork = session.Ixnetwork
+        """ Apply traffic to hardware """
+        ixnetwork.Traffic.Apply()
+        """ Run traffic """
+        ixnetwork.Traffic.StartStatelessTrafficBlocking()
+    except Exception as e:
+        logger.error(e)
+        logger_msg(u'流量开启失败，请检查配置', 'ERROR')
 
 def create_ip_traffic_item (
         session,
@@ -531,327 +585,161 @@ def create_ip_traffic_item (
     traffic_item.Tracking.find().TrackBy = ['trackingenabled0']
     return traffic_item
 
-
-def create_ipv4_traffic(session,
-                        name,
-                        source,
-                        destination,
-                        pkt_size=64,
-                        pkt_count=None,
-                        duration=None,
-                        rate_percent=100,
-                        start_delay=0,
-                        dscp_list=None,
-                        lossless_prio_list=None,
-                        ecn_capable=False):
-    """
-    Create an IPv4 traffic item on IxNetwork.
-
-    Args:
-        session (obj): IxNetwork session object.
-        name (str): Name of traffic item
-        source (obj list): Source endpoints - list of IxNetwork vport objects.
-        destination (obj list): Destination endpoints - list of IxNetwork 
-            vport objects.
-        pkt_size (int): Packet size.
-        pkt_count (int): Packet count.
-        duration (int): Traffic duration in second (positive integer only!)
-        rate_percent (int): Percentage of line rate.
-        start_delay (int): Start delay in second.
-        dscp_list(int list): List of DSCPs.
-        lossless_prio_list (int list): List of lossless priorities.
-        ecn_capable (bool): If packets can get ECN marked.
-
-    Returns:
-        The created traffic item or None in case of error.
-    """
+def config_license_server(session, licenseInfo):
     ixnetwork = session.Ixnetwork
-
-    traffic_item = ixnetwork.Traffic.TrafficItem.add(Name=name, 
-                                                     BiDirectional=False, 
-                                                     TrafficType='ipv4')
-
-    traffic_item.EndpointSet.add(Sources=source, Destinations=destination)
-
-    traffic_config  = traffic_item.ConfigElement.find()[0]
-
-    # Todo: add sending rate support
-    traffic_config.FrameRate.update(Type='percentLineRate', Rate=rate_percent)
-    traffic_config.FrameRateDistribution.PortDistribution = 'splitRateEvenly'
-    traffic_config.FrameSize.FixedSize = pkt_size
-
-    if pkt_count is not None and duration is not None:
-        logger.error('You can only specify either pkt_count or duration')
-        return None
-
-    if pkt_count is not None:
-        traffic_config.TransmissionControl.update(Type='fixedFrameCount', 
-                                                  FrameCount=pkt_count)
-    elif duration is not None:
-        if type(duration) != int or duration <= 0:
-            logger.error('Invalid duration value {} (positive integer only)'.
-                format(duration))
-
-            return None
-        else:
-            traffic_config.TransmissionControl.update(
-                Type='fixedDuration', 
-                Duration=duration)
-    else:
-        traffic_config.TransmissionControl.update(Type='continuous')
-
-    if start_delay > 0:
-        traffic_config.TransmissionControl.update(
-            StartDelayUnits='nanoseconds',
-            StartDelay=start_delay*(10**6))
-
-    if dscp_list is not None and len(dscp_list) > 0:
-        phb_field = traffic_item.ConfigElement.find().Stack.find('IPv4').Field.\
-            find(DisplayName='Default PHB')
-
-        phb_field.ActiveFieldChoice = True
-        phb_field.ValueType = 'valueList'
-        phb_field.ValueList = dscp_list
-
-    # Set ECN bits to 10 (ECN capable).
-    if ecn_capable:
-        phb_field = traffic_item.ConfigElement.find().Stack.find('IPv4').\
-            Field.find(FieldTypeId='ipv4.header.priority.ds.phb.defaultPHB.unused')
-
-        phb_field.ActiveFieldChoice = True
-        phb_field.ValueType = 'singleValue'
-        phb_field.SingleValue = 2
-
-    if lossless_prio_list is not None and len(lossless_prio_list) > 0:
-        eth_stack = traffic_item.ConfigElement.find()[0].Stack.find(
-            DisplayName='Ethernet II')
-
-        pfc_queue = eth_stack.Field.find(DisplayName='PFC Queue')
-        pfc_queue.ValueType = 'valueList'
-        pfc_queue.ValueList = lossless_prio_list
-
-    traffic_item.Tracking.find()[0].TrackBy = ['flowGroup0']
-
-    # Push ConfigElement settings down to HighLevelStream resources.
-    traffic_item.Generate()
-
-    return traffic_item
-
-
-def create_pause_traffic(session, name, source, pkt_per_sec, pkt_count=None, 
-                         duration=None, start_delay=0, global_pause=False,
-                         pause_prio_list=[]):
-    """
-    Create a pause traffic item.
-
-    Args:
-        session (obj): IxNetwork session object.
-        name (str): Name of traffic item.
-        source (obj list): Source endpoints - list of IxNetwork vport objects.
-        pkt_per_sec (int): Packets per second.
-        pkt_count (int): Packet count.
-        duration (int): Traffic duration in second (positive integer only!).
-        start_delay (int): Start delay in second.
-        global_pause (bool): If the generated packets are global pause
-            (IEEE 802.3X PAUSE).
-        pause_prio_list: list of priorities to pause. Only valid when
-            global_pause is False.
-
-    Returns:
-        The created traffic item or None if any errors happen.
-    """
-    if pause_prio_list is not None:
-        for prio in pause_prio_list:
-            if prio < 0 or prio > 7:
-                logger.error('Invalid pause priorities {}'.
-                    format(pause_prio_list))
-                return None
-
-    ixnetwork = session.Ixnetwork
-    traffic_item = ixnetwork.Traffic.TrafficItem.add(Name=name, 
-                                                     BiDirectional=False, 
-                                                     TrafficType='raw')
-
-    # Since PFC packets will not be forwarded by the switch, so 
-    # destinations are actually not used. 
-    traffic_item.EndpointSet.add(Sources=source.Protocols.find(),
-                                 Destinations=source.Protocols.find())
-
-    traffic_config = traffic_item.ConfigElement.find()[0]
-    traffic_config.FrameRate.update(Type='framesPerSecond', Rate=pkt_per_sec)
-    traffic_config.FrameRateDistribution.PortDistribution = 'splitRateEvenly'
-    traffic_config.FrameSize.FixedSize = 64
-
-    if pkt_count is not None and duration is not None:
-        logger.error('You can only specify either pkt_count or duration')
-        return None
-
-    if pkt_count is not None:
-        traffic_config.TransmissionControl.update(
-            Type='fixedFrameCount', 
-            FrameCount=pkt_count)
-
-    elif duration is not None:
-        if type(duration) != int or duration <= 0:
-            logger.error('Invalid duration value {} (positive integer only)'.
-                format(duration))
-
-            return None
-        else:
-            traffic_config.TransmissionControl.update(
-                Type='fixedDuration', 
-                Duration=duration)
-
-    else:
-        traffic_config.TransmissionControl.update(Type='continuous')
-
-    if start_delay > 0:
-        traffic_config.TransmissionControl.update(
-            StartDelayUnits='nanoseconds',
-            StartDelay=start_delay*(10**6))
-
-    # Add PFC header
-    pfc_stack_obj = __create_pkt_hdr(
-        ixnetwork=ixnetwork,
-        traffic_item=traffic_item,
-        pkt_hdr_to_add='^PFC PAUSE \(802.1Qbb\)',
-        append_to_stack='Ethernet II')
-
-    # Construct global pause and PFC packets.
-    if global_pause:
-        __set_global_pause_fields(pfc_stack_obj)
-    else:
-        __set_pfc_fields(pfc_stack_obj, pause_prio_list)
-
-    # Remove Ethernet header.
-    traffic_item.ConfigElement.find()[0].Stack.\
-        find(DisplayName="Ethernet II").Remove()
-
-    traffic_item.Tracking.find()[0].TrackBy = ['flowGroup0']
-
-    # Push ConfigElement settings down to HighLevelStream resources.
-    traffic_item.Generate()
-
-    return traffic_item
-
-# This section defines helper function used in the module. These functions
-# should not be called from test script.
-# 1. __set_global_pause_fields 
-# 2. __set_eth_fields
-# 3. __set_pfc_fields
-# 4. __create_pkt_hdr
-
-def __set_global_pause_fields(pfc_stack_obj):
-    code = pfc_stack_obj.find(DisplayName='Control opcode')
-    code.ValueType = 'singleValue'
-    code.SingleValue = '1'
-
-    # This field is pause duration in global pause packet.
-    prio_enable_vector = pfc_stack_obj.find(DisplayName='priority_enable_vector')
-
-    prio_enable_vector.ValueType = 'singleValue'
-    prio_enable_vector.SingleValue = 'ffff'
-
-    # pad bytes
-    for i in range(8):
-        pause_duration = pfc_stack_obj.find(DisplayName='PFC Queue {}'.format(i))
-
-        pause_duration.ValueType = 'singleValue'
-        pause_duration.SingleValue = '0'
-
-
-def __set_eth_fields(eth_stack_obj, src_mac, dst_mac):
-    if src_mac is not None:
-        src_mac_field = eth_stack_obj.find(DisplayName='Source MAC Address')
-        src_mac_field.ValueType = 'singleValue'
-        src_mac_field.SingleValue = src_mac
-
-    if dst_mac is not None:
-        dst_mac_field = eth_stack_obj.find(DisplayName='Destination MAC Address')
-
-        dst_mac_field.ValueType = 'singleValue'
-        dst_mac_field.SingleValue = dst_mac
-
-
-def __set_ip_fields(ip_stack_obj, src_ip, dst_ip, dscp_list):
-    if src_ip is not None:
-        src_ip_field = ip_stack_obj.find(DisplayName='Source Address')
-        src_ip_field.ValueType = 'singleValue'
-        src_ip_field.SingleValue = src_ip
-
-    if dst_ip is not None:
-        dst_ip_field = ip_stack_obj.find(DisplayName='Destination Address')
-        dst_ip_field.ValueType = 'singleValue'
-        dst_ip_field.SingleValue = dst_ip
-
-    if dscp_list is not None and len(dscp_list) > 0:
-        phb_field = ip_stack_obj.find(DisplayName='Default PHB')
-        phb_field.ActiveFieldChoice = True
-        phb_field.ValueType = 'valueList'
-        phb_field.ValueList = dscp_list
-
-
-def __set_pfc_fields(pfc_stack_obj, pause_prio_list):
-    code = pfc_stack_obj.find(DisplayName='Control opcode')
-    code.ValueType = 'singleValue'
-    code.SingleValue = '101'
-
-    prio_enable_vector = pfc_stack_obj.find(DisplayName='priority_enable_vector')
-    prio_enable_vector.ValueType = 'singleValue'
-
-    val = 0
-    for prio in pause_prio_list:
-        val += (1 << prio)
-    prio_enable_vector.SingleValue = hex(val)
-
-    for i in range(8):
-        pause_duration = pfc_stack_obj.find(DisplayName='PFC Queue {}'.format(i))
-        pause_duration.ValueType = 'singleValue'
-
-        if i in pause_prio_list:
-            pause_duration.SingleValue = 'ffff'
-        else:
-            pause_duration.SingleValue = '0'
-
-
-def __create_pkt_hdr(ixnetwork, 
-                       traffic_item, 
-                       pkt_hdr_to_add,
-                       append_to_stack):
-    #Add new packet header in traffic item
-    config_element = traffic_item.ConfigElement.find()[0]
-
-    # Do the followings to add packet headers on the new traffic item
-
-    # Uncomment this to show a list of all the available protocol templates 
-    # to create (packet headers)
-    #for protocolHeader in ixNetwork.Traffic.ProtocolTemplate.find():
-    #    ixNetwork.info('Protocol header: -- {} --'.
-    #        format(protocolHeader.DisplayName))
-
-    # 1> Get the <new packet header> protocol template from the ProtocolTemplate 
-    #   list.
-    pkt_hdr_proto_template = \
-        ixnetwork.Traffic.ProtocolTemplate.find(DisplayName=pkt_hdr_to_add)
-    #ixNetwork.info('protocolTemplate: {}'.format(packetHeaderProtocolTemplate))
-
-    # 2> Append the <new packet header> object after the specified packet 
-    #   header stack.
-    append_to_stack_obj = config_element.Stack.find(
-        DisplayName=append_to_stack
-    )
-    #ixNetwork.info('appendToStackObj: {}'.format(appendToStackObj))
-    append_to_stack_obj.Append(Arg2=pkt_hdr_proto_template)
-
-    # 3> Get the new packet header stack to use it for appending an 
-    # IPv4 stack after it. Look for the packet header object and stack ID.
-    pkt_hdr_stack_obj = config_element.Stack.find(DisplayName=pkt_hdr_to_add)
-
-    # 4> In order to modify the fields, get the field object
-    pkt_hdr_field_obj = pkt_hdr_stack_obj.Field.find()
-    #ixNetwork.info('packetHeaderFieldObj: {}'.format(packetHeaderFieldObj))
-
-    # 5> Save the above configuration to the base config file.
-    #   ixNetwork.SaveConfig(Files('baseConfig.ixncfg', local_file=True))
-    return pkt_hdr_field_obj
-
+    licenseServerIp = licenseInfo[0]
+    licenseMode = licenseInfo[1]
+    licenseTier = licenseInfo[2]
+    if ixnetwork.Vport.find()[0].ConnectionState == 'connectedLinkUp':
+        return 
+    ixnetwork.Globals.Licensing.LicensingServers = licenseServerIp
+    ixnetwork.Globals.Licensing.Mode = licenseMode
+    ixnetwork.Globals.Licensing.Tier = licenseTier
+    
+    
+def reserve_port(session, portList, force=True):
+    try:
+        ixnetwork = session.Ixnetwork
+        portMap = session.PortMapAssistant()
+        vport = dict()
+        for index,port in enumerate(portList):
+            portCntInCfg = len(ixnetwork.Vport.find())
+            if index >= portCntInCfg:
+                break
+            portName = ixnetwork.Vport.find()[index].Name
+            logger_msg(u'连接机框 %s，开始抢占端口%s/%s' % (port[0], port[1], port[2]))
+            portMap.Map(IpAddress=port[0], CardId=port[1], PortId=port[2], Name=portName)
+        forceTakePortOwnership = force
+        portMap.Connect(forceTakePortOwnership)
+    except Exception as err:
+        logger.error(err)
+        logger_msg(u'占用端口失败，请检查配置', 'ERROR')
+
+def load_config(session, file=''):
+    try:
+        ixnetwork = session.Ixnetwork
+        if file == '':
+            file = sys.argv[0].split('/')[-1].split('.')[0] + '.ixncfg'
+        ixnetwork.LoadConfig(Files(file, local_file=True))
+        #ixNetwork.ResourceManager.ImportConfigFile(Files(jsonConfigFile, local_file=True), Arg3=True)
+    except Exception as err:
+        logger.error(err)
+        logger_msg(u'加载配置文件失败，请检查配置', 'ERROR')
+
+def modify_vlan(session, portname, vlanid, index='0'):
+    #modify the interface vlanid of input port name, 
+    #'index' means the interface offset on that port
+    try:
+        ixnetwork = session.Ixnetwork
+        porthref = ixnetwork.Vport.find(Name=portname).href
+        for topology in ixnetwork.Topology.find():
+            vports = topology.Ports
+            if porthref in vports:
+                ethernet = topology.DeviceGroup.find()[int(index)].Ethernet.find()[0]
+                if math.isnan(vlanid):
+                    ethernet.EnableVlans.Single(False)
+                else:
+                    ethernet.EnableVlans.Single(True)
+                    ethernet.Vlan.find()[0].VlanId.Increment(start_value=vlanid, step_value=0)
+                break
+    except Exception as err:
+        logger.error(err)
+        logger_msg(u'更改vlan失败，请检查配置', 'ERROR')
+            
+    
+def logger_msg(msg, level='INFO'):
+    # support info level and error level 
+    if level.lower() == 'info':
+        try:
+            logger.info(msg.encode('utf-8'))
+        except Exception as err:
+            logger.info(msg)
+    elif level.lower() == 'error':
+        try:
+            logger.error(msg.encode('utf-8'))
+        except Exception as err:
+            logger.error(msg)
+    
+def get_connection_info(testbed):
+    #info = dict()
+    #info = {'seastone-dx010':{'Eth29':{'ixia_port': 'card1/port1', 'vlanid':'1681'}, 'Eth30':{'ixia_port': 'card1/port2', 'vlanid':'1682'}}, \
+    #        'seastone-dx010-1':{'Eth31':{'ixia_port': 'card1/port3', 'vlanid':'1683'}, 'Eth32':{'ixia_port': 'card1/port4', 'vlanid':'1684'}}}
+
+    intf = dict()
+    vlanid = dict()
+    table = pd.read_csv(r'../ansible/files/sonic_ixia_links.csv')
+    confvalue = testbed['conf-name']
+    table1 = table.loc[table['conf-name'] == confvalue]
+    dutports = table1['dut-port'].values.tolist()
+    for dutport in dutports:
+        table2 = table1.loc[table1['dut-port'] == dutport]
+        if dutport.find(',')>=0:
+            i = 0
+            for dutport_2dut in dutport.split(','):
+                dutport_2dut_intf = table2['interface'].values.tolist()[0].split(',')
+                if i < len(dutport_2dut_intf):
+                    intf[dutport_2dut.strip()] = dutport_2dut_intf[i]
+                i = i + 1
+            continue
+        intf[dutport] = table2['interface'].values.tolist()[0]
+        vlanid[dutport] = table2['vlanid'].values.tolist()[0]
+    return intf, vlanid
+
+    
+def get_ixia_license(testbed, duthost):
+    dutname = testbed['vm_base']
+    license_info = []
+    if dutname != '':
+        hostvars = duthost.host.options['variable_manager']._hostvars[dutname]
+        license_server_ip = hostvars['license_server_ip']
+        license_mode = hostvars['license_mode']
+        license_tier = hostvars['license_tier']
+        license_info = [[license_server_ip], license_mode, license_tier]
+    return license_info
+    
+    
+def send_cmd(dutIP, dutUser, dutPwd, cmd='',waitTime='10000'):
+    returnString = ''
+    dut_ip = dutIP
+    dut_usr = dutUser
+    dut_pwd = dutPwd
+    logger_msg(u'连接DUT进行配置')
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ret = client.connect(dut_ip, port=22, username=dut_usr, password=dut_pwd)
+    sendCmd = client.invoke_shell()
+    sendCmd.settimeout(5)
+    send_cmd_log_path = os.path.join(os.getcwd(),'ixia/result/send_cmd_log')
+    if os.path.exists(send_cmd_log_path) == False:
+            os.makedirs(send_cmd_log_path)
+    tc = os.environ.get('PYTEST_CURRENT_TEST').split(':')[-1].split(' ')[0]
+    filename = tc+'.txt'
+    outputfile = os.path.join(send_cmd_log_path, filename)
+    output_file = open(outputfile, 'a')
+    output_file.write('\n' + 100 * '=' + '\n')
+    if len(cmd.strip()) <= 0:
+        return
+    sendCmd.send(cmd.strip() + '\n')
+    time.sleep(2)
+    try:
+        output = sendCmd.recv(16384).decode('ascii')
+    except Exception as e:
+        output = 'SSHDUT.SendCmdError:' + str(type(e)) + str(e)
+    #logger.error(output.strip())
+    output_file.write(output.strip())
+    time.sleep(2)
+    returnString = returnString + '\n' + output
+    output_file.close()
+    logger_msg(u'DUT配置完成')
+    return returnString
+
+    
+
+
+def InitDutCmdList():
+    global CurDutCmdList
+    CurDutCmdList = []
+
+def DutCmdAdd(CurAddCmd):
+    global CurDutCmdList
+    CurDutCmdList.append(CurAddCmd)
