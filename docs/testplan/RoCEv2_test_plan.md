@@ -22,6 +22,30 @@
   <img src="Img/RoCEv2_Topology_2.png" width="350"  hspace="200"/>
 </p>
 
+## Test Topology 3 – Collective benchmark with 2x2 Clos fabric
+
+- Two leaf switches and two spine switches forming a two-tier 2x2 Clos fabric. Every leaf connects to every spine.
+- Each leaf has 8 uplinks (4 links to each spine), matching its 8 tester-facing ports (1:1, non-blocking). There are 16 leaf–spine links in total.
+- All leaf–spine links use the same link speed as the tester-facing ports.
+- The tester emulates two hosts with 8 ranks each (16 tester ports in total). Host 1 (Rank 0–7) connects to Leaf 1 and Host 2 (Rank 8–15) connects to Leaf 2.
+- Used for the collective benchmark test cases that need multiple equal-cost paths, such as load balancing and link failover.
+
+```mermaid
+graph TD
+    S1[Spine 1]
+    S2[Spine 2]
+    L1[Leaf 1]
+    L2[Leaf 2]
+    H1[Host 1: Rank 0-7]
+    H2[Host 2: Rank 8-15]
+    S1 ---|4 links| L1
+    S1 ---|4 links| L2
+    S2 ---|4 links| L1
+    S2 ---|4 links| L2
+    L1 --- H1
+    L2 --- H2
+```
+
 ## Port Placement for T2 (Multi-ASIC / Multi-Linecard) Chassis
 
 A T2 DUT is a single logical switch built from multiple linecards, each carrying one or more
@@ -134,8 +158,8 @@ V3: P1 <-> P5   (different linecard, ASIC 1a -> Fabric Card -> ASIC 2a)
      - The DSCP value mapped to **Queue 5** shall carry **CNP traffic**.
      - The DSCP value mapped to **Queue 6** shall carry **ACK/NAK traffic**.
 5. Configure the following traffic parameters:
-   - **InfiniBand MTU:** 4 KB
-   - **Message size:** 1 MB (256 packets per message burst)
+   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
+   - **Message size:** 1 MB (256 packets per message burst at 4 KB payload size)
    - **Initial ECN field:** `00` (Not ECN-Capable)
 
 6. Run lossless and lossy traffic for 3 minutes and verify the statistics.
@@ -209,8 +233,8 @@ V3: P1 <-> P5   (different linecard, ASIC 1a -> Fabric Card -> ASIC 2a)
      - Data traffic shall use the **DSCP values mapped to Queues 0, 1, and 2**, respectively.
    - CNP traffic shall use the **DSCP value mapped to Queue 5**.
    - ACK/NAK traffic shall use the **DSCP value mapped to Queue 6**.
-   - **InfiniBand MTU:** 4 KB
-   - **Message size:** 128 KB (32 packets per message burst)
+   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
+   - **Message size:** 128 KB (32 packets per message burst at 4 KB payload size)
    - **Traffic rate:** 100% line rate per transmitting port
    - **Initial ECN field:** `00` (Not ECN-Capable)
 
@@ -231,8 +255,8 @@ V3: P1 <-> P5   (different linecard, ASIC 1a -> Fabric Card -> ASIC 2a)
      - Data traffic shall use the **DSCP values mapped to Queues 0, 1, and 2**, respectively.
    - CNP traffic shall use the **DSCP value mapped to Queue 5**.
    - ACK/NAK traffic shall use the **DSCP value mapped to Queue 6**.
-   - **InfiniBand MTU:** 4 KB
-   - **Message size:** 128 KB (32 packets per message burst)
+   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
+   - **Message size:** 128 KB (32 packets per message burst at 4 KB payload size)
    - **Traffic rate:** 100% line rate per transmitting port
    - **Initial ECN field:** `00` (Not ECN-Capable)
 
@@ -246,17 +270,17 @@ V3: P1 <-> P5   (different linecard, ASIC 1a -> Fabric Card -> ASIC 2a)
    - Each rank pair shall transmit **4 GB** of data traffic.
    - **Rank 0 → Rank 3**
      - Data traffic shall use the **DSCP value mapped to Queue 3** (lossless).
-     - **InfiniBand MTU:** 4 KB
-     - **Message size:** 128 KB (32 packets per message burst)
+     - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
+     - **Message size:** 128 KB (32 packets per message burst at 4 KB payload size)
    - **Rank 1 → Rank 3**
      - Data traffic shall use the **DSCP value mapped to Queue 4** (lossless).
-     - **InfiniBand MTU:** 4 KB
+     - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
      - **Message size:** 4 KB (**WRITE-only** message)
    - **Rank 2 → Rank 3**
      - Configure one QP for each lossy queue (**Queues 0, 1, and 2**).
      - Data traffic shall use the **DSCP values mapped to Queues 0, 1, and 2**, respectively.
-     - **InfiniBand MTU:** 4 KB
-     - **Message size:** 128 KB (32 packets per message burst)
+     - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
+     - **Message size:** 128 KB (32 packets per message burst at 4 KB payload size)
    - CNP traffic shall use the **DSCP value mapped to Queue 5**.
    - ACK/NAK traffic shall use the **DSCP value mapped to Queue 6**.
    - **Traffic rate:** 100% line rate per transmitting port
@@ -348,8 +372,8 @@ All messages shall complete successfully.
      - Data traffic shall use the **DSCP values mapped to Queues 0, 1, and 2**, respectively.
    - CNP traffic shall use the **DSCP value mapped to Queue 5**.
    - ACK/NAK traffic shall use the **DSCP value mapped to Queue 6**.
-   - **InfiniBand MTU:** 4 KB
-   - **Message size:** 128 KB (32 packets per message burst)
+   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
+   - **Message size:** 128 KB (32 packets per message burst at 4 KB payload size)
    - **Traffic rate:** 100% line rate per transmitting port
    - **Initial ECN field:** `01/10` (ECN-Capable)
 5. Run traffic and validate statistics.
@@ -369,8 +393,8 @@ All messages shall complete successfully.
      - Data traffic shall use the **DSCP values mapped to Queues 0, 1, and 2**, respectively.
    - CNP traffic shall use the **DSCP value mapped to Queue 5**.
    - ACK/NAK traffic shall use the **DSCP value mapped to Queue 6**.
-   - **InfiniBand MTU:** 4 KB
-   - **Message size:** 128 KB (32 packets per message burst)
+   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
+   - **Message size:** 128 KB (32 packets per message burst at 4 KB payload size)
    - **Traffic rate:** 100% line rate per transmitting port
    - **Initial ECN field:** `01/10` (ECN-Capable)
 7. Run traffic and validate statistics.
@@ -472,8 +496,8 @@ All messages shall complete successfully.
      - Data traffic shall use the **DSCP values mapped to Queues 0, 1, and 2**, respectively.
    - CNP traffic shall use the **DSCP value mapped to Queue 5**.
    - ACK/NAK traffic shall use the **DSCP value mapped to Queue 6**.
-   - **InfiniBand MTU:** 4 KB
-   - **Message size:** 1 MB (256 packets per message burst)
+   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
+   - **Message size:** 1 MB (256 packets per message burst at 4 KB payload size)
    - **Traffic rate:** 100% line rate per transmitting port
    - **Initial ECN field:** `01/10` (ECN-Capable)
    - **Configure constant rate traffic (RoCEv2 storage traffic)**
@@ -497,8 +521,8 @@ All messages shall complete successfully.
      - Data traffic shall use the **DSCP values mapped to Queues 0, 1, and 2**, respectively.
    - CNP traffic shall use the **DSCP value mapped to Queue 5**.
    - ACK/NAK traffic shall use the **DSCP value mapped to Queue 6**.
-   - **InfiniBand MTU:** 4 KB
-   - **Message size:** 1 MB (256 packets per message burst)
+   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
+   - **Message size:** 1 MB (256 packets per message burst at 4 KB payload size)
    - **Traffic rate:** 100% line rate per transmitting port
    - **Initial ECN field:** `01/10` (ECN-Capable)
    - **Configure constant rate traffic (RoCEv2 storage traffic)**
@@ -587,8 +611,8 @@ All messages shall complete successfully.
      - Configure one QP for each lossy priority (**Queues 0, 1 and 2**).
      - The DSCP value mapped to **Queue 5** shall carry **CNP traffic**.
      - The DSCP value mapped to **Queue 6** shall carry **ACK/NAK traffic**.
-     - **InfiniBand MTU:** 4 KB
-     - **Message size:** 128 KB (32 packets per message burst)
+     - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
+     - **Message size:** 128 KB (32 packets per message burst at 4 KB payload size)
      - **Traffic rate:** 100% line rate per transmitting port
      - **Initial ECN field:** `01/10` (ECN-Capable)
      - **Configure constant rate traffic (RoCEv2 storage traffic)**
@@ -667,8 +691,8 @@ All messages shall complete successfully.
      - Data traffic shall use the **DSCP values mapped to Queues 0, 1, and 2**, respectively.
    - CNP traffic shall use the **DSCP value mapped to Queue 5**.
    - ACK/NAK traffic shall use the **DSCP value mapped to Queue 6**.
-   - **InfiniBand MTU:** 4 KB
-   - **Message size:** 1 MB (256 packets per message burst)
+   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
+   - **Message size:** 1 MB (256 packets per message burst at 4 KB payload size)
    - **Traffic rate:** 100% line rate per transmitting port
    - **Initial ECN field:** `01/10` (ECN-Capable)
 
@@ -689,8 +713,8 @@ All messages shall complete successfully.
      - Data traffic shall use the **DSCP values mapped to Queues 0, 1, and 2**, respectively.
    - CNP traffic shall use the **DSCP value mapped to Queue 5**.
    - ACK/NAK traffic shall use the **DSCP value mapped to Queue 6**.
-   - **InfiniBand MTU:** 4 KB
-   - **Message size:** 1 MB (256 packets per message burst)
+   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
+   - **Message size:** 1 MB (256 packets per message burst at 4 KB payload size)
    - **Traffic rate:** 100% line rate per transmitting port
    - **Initial ECN field:** `01/10` (ECN-Capable)
 
@@ -754,7 +778,7 @@ All messages shall complete successfully.
    - If multiple DSCP values are mapped to the queue, randomly select one DSCP value for the test.
 
 3. Configure continuous stateful RoCEv2 traffic with the following parameters:
-   - **InfiniBand MTU:** 4 KB
+   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
    - **Message size:** 1 MB
    - Data traffic shall use the **DSCP value mapped to Queue 3**.
    - ACK/NAK traffic shall use the **DSCP value mapped to Queue 6**.
@@ -818,7 +842,7 @@ All messages shall complete successfully.
    - If multiple DSCP values are mapped to the queue, randomly select one DSCP value for the test.
 
 3. Configure continuous stateful RoCEv2 traffic with the following parameters:
-   - **InfiniBand MTU:** 4 KB
+   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
    - **Message size:** 128 KB
    - Data traffic shall use the **DSCP value mapped to Queue 3**.
    - ACK/NAK traffic shall use the **DSCP value mapped to Queue 6**.
@@ -832,8 +856,8 @@ All messages shall complete successfully.
    - Data traffic shall use the **DSCP value mapped to Queue 3**.
    - ACK/NAK traffic shall use the **DSCP value mapped to Queue 6**.
    - CNP traffic shall use the **DSCP value mapped to Queue 5**.
-   - **InfiniBand MTU:** 4 KB
-   - **Message size:** 128 KB (32 packets per message burst)
+   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
+   - **Message size:** 128 KB (32 packets per message burst at 4 KB payload size)
    - **Initial ECN field:** `ECT(0)` or `ECT(1)` (`10` or `01`).
 3. Enable **Out-of-Order (OoO)** support on the tester.
 4. Run the traffic until completion and validate the traffic and DUT statistics.
@@ -885,7 +909,7 @@ All messages shall complete successfully.
 ### Test Steps
 
 1. Configure stateful RoCEv2 traffic with the following parameters:
-   - **InfiniBand MTU:** 4 KB
+   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
    - **Message size:** 1 MB
    - Data traffic shall use the **DSCP value mapped to Queue 3/Queue 4**.
 2. Configure **three background traffic flows** between the following port pairs:
@@ -949,7 +973,7 @@ All messages shall complete successfully.
    - **Port 2 → Port 6**
 2. Configure the traffic with the following parameters:
    - Data traffic shall use the **DSCP value mapped to Queue 3**.
-   - **InfiniBand MTU:** 4 KB
+   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
    - **Message size:** 1 MB
 3. Start the traffic and verify the tester statistics.
 4. Bring down one **Leaf 1** egress link carrying traffic and verify the tester statistics.
@@ -1005,8 +1029,8 @@ All messages shall complete successfully.
    - Data traffic shall use the **DSCP value mapped to Queue 3**.
    - CNP traffic shall use the **DSCP value mapped to Queue 5**.
    - ACK/NAK traffic shall use the **DSCP value mapped to Queue 6**.
-   - **InfiniBand MTU:** 4 KB
-   - **Message size:** 128 KB (32 packets per message burst)
+   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
+   - **Message size:** 128 KB (32 packets per message burst at 4 KB payload size)
    - **Initial ECN field:** `00` (Not ECN-Capable).
 3. Run the traffic for **60 seconds** and validate the traffic and DUT statistics.
 4. Configure **constant-rate** traffic for:
@@ -1026,3 +1050,177 @@ All messages shall complete successfully.
 - DUT counters shall match the corresponding tester counters.
 - Average and maximum latency shall remain within the DUT specification.
 - Successful completion of the test indicates that the DUT correctly forwards simultaneous incast and broadcast RoCEv2 traffic while maintaining the expected congestion-control behavior.
+
+## Test Case 12 – Collective Load Balancing (JFI)
+
+### Objective
+
+- Validate that the inter-host traffic of a collective benchmark is evenly distributed across all leaf–spine links of the Clos fabric.
+- Compare ECMP, packet spray and, where the DUT supports it, the ASIC-specific dynamic load balancing in terms of link-utilization fairness (Jain's Fairness Index, JFI), DUT buffer occupancy (queue and shared-buffer watermark) and the tail message latency measured by the tester (P90, P99 and P99.9).
+
+### Topology
+
+- Uses Test Topology 3 (2x2 Clos, 2 hosts with 8 ranks each, 8 uplinks per leaf).
+
+### Prerequisites
+
+1. Configure the DUT with the following queue assignments:
+   - **Queue 3:** Lossless queue.
+   - Enable **PFC** and **ECN marking** on the lossless queue.
+2. Use **DSCP 3** for the data traffic, which maps to **Queue 3** in the SONiC default `DSCP_TO_TC_MAP`.
+3. Configure the number of equal-cost paths on the DUT:
+   - Each leaf shall install **all 8 uplinks** as members of the ECMP group (for example, the BGP maximum-paths / ECMP width shall be at least 8). The configured width shall be recorded in the test report.
+   - For packet spray, all 8 uplinks of each leaf shall be members of the spray group.
+   - The number of QPs is configured **per rank pair**, and the collective itself has many communicating rank pairs, so the total number of flows seen by the DUT is the number of inter-host rank pairs of the collective multiplied by the QPs per rank pair. The QPs per rank pair is swept in the test scenarios (see below), for example 1, 8 and 16 (input list). The QPs per rank pair and the resulting total number of inter-host flows shall be recorded with every result.
+4. Configure the collective benchmark with the following parameters:
+   - **Collective and algorithm:** All-to-All, All-Reduce and Gather, each with its algorithm (input parameter). Every scenario shall be run for all three collectives, because their inter-host traffic patterns are very different: All-to-All has many inter-host rank pairs, All-Reduce has far fewer, and Gather is an incast. The collective, the algorithm and the rank order used shall be recorded. For the All-Reduce **ring** and **tree** algorithms, the number of channels is the **NCCL default** and is not tuned.
+   - **Gather (incast):** all ranks send their data to one root rank. Gather is run twice, with a different root each time:
+     - **Root = Rank 0 (Host 1):** the 8 ranks of Host 2 (Rank 8–15) send to Rank 0 through the DUT (8:1 incast). The inter-host data flows from Leaf 2 through the spines to Leaf 1.
+     - **Root = Rank 8, the first rank of Host 2:** the 8 ranks of Host 1 (Rank 0–7) send to Rank 8 through the DUT (8:1 incast). The inter-host data flows from Leaf 1 through the spines to Leaf 2.
+
+     In both runs the data of the other ranks of the root's own host stays inside that host and is not sent to the DUT, all the inter-host data flows in one direction, and it converges on the single port of the root rank.
+   - **Data size:** X GB per collective (input parameter).
+   - **Iterations:** N iterations per scenario (input parameter).
+   - **Payload size:** the RoCEv2 payload size per packet, 4 KB or 8 KB if supported by the tester and the DUT (input parameter). The MTU of the DUT ports shall be large enough for the payload plus the headers.
+   - Data traffic shall use **DSCP 3** (Queue 3).
+   - **Intra-host traffic:** the collective traffic between the ranks of the same host (which goes over the host-internal interconnect, for example NVLink, in a real server) is emulated inside the tester, and the interconnect bandwidth is an input parameter. This traffic is not sent to the DUT. Only the traffic between ranks of different hosts (Rank 0–7 ↔ Rank 8–15) is sent as RoCEv2 traffic through the DUT, so the JFI and buffer measurements refer to this part only.
+5. Collect the transmit byte counters of every leaf–spine interface in both directions (leaf-to-spine and spine-to-leaf) from the DUT, because the leaf–spine links are not visible to the tester:
+   - Use gNMI streaming telemetry on `COUNTERS_DB` (**STREAM** subscription, **SAMPLE** mode) with a sample interval of **1 second**, which is the minimum interval supported by SONiC.
+   - The `PORT_STAT` flex counter polling interval (default 1 s) determines how often the counters are updated. Set it to 500 ms or lower so that every 1-second sample contains fresh counters, and verify it with `counterpoll show`.
+   - Calculate the byte rates from the counter deltas and the timestamps of the notifications, not from the nominal sample interval.
+6. Enable the collection of buffer statistics on the DUT: the **Queue 3 watermark** (queue occupancy peak) and the **shared buffer pool / headroom watermark** on every leaf and spine.
+   - The default polling interval of the watermark flex counters is 60 s, which is longer than an iteration. Set it to 1 s (for example `counterpoll watermark interval 1000`) and verify it with `counterpoll show`.
+   - Use the **user watermark**, which is cleared only manually. Clear it (for example `sonic-clear queue watermark unicast` and `sonic-clear priority-group watermark headroom`) before the start of each scenario, and wait at least one polling interval after clearing.
+7. Enable the **message latency** measurement on the tester for the inter-host RoCEv2 traffic, so that the **P90**, **P99** and **P99.9** message latency can be reported for every run.
+
+### Definition of JFI
+
+For *n* leaf–spine links of one direction, with the bytes *x<sub>i</sub>* transmitted on link *i* during the measurement window:
+
+JFI = (Σ x<sub>i</sub>)² / (n × Σ x<sub>i</sub>²)
+
+- JFI is calculated separately for the leaf-to-spine direction (*n* = 16, 8 per leaf) and for the spine-to-leaf direction (*n* = 16).
+- For a collective whose inter-host data flows in one direction only, such as **Gather**, only the links that carry the data are included: the 8 uplinks of the sending leaf (leaf-to-spine, *n* = 8) and the 8 downlinks to the receiving leaf (spine-to-leaf, *n* = 8). The sending leaf is Leaf 2 when the root is Rank 0, and Leaf 1 when the root is Rank 8. The opposite direction carries only ACK traffic and is excluded.
+- JFI is 1 for a perfectly even distribution and 1/*n* when all traffic is on a single link.
+- **Overall JFI:** calculated on the bytes transmitted during the whole measurement window, which covers all iterations of the collective. The gaps between iterations carry no traffic and do not change it.
+- **Per-interval JFI:** the same formula applied to the bytes transmitted in each sampling interval. Intervals in which no traffic is sent (the gaps between iterations) are excluded, because the JFI is undefined for them. The overall JFI can hide a transient imbalance inside an iteration (for example traffic concentrated on a few links first and the remaining links used later), and the **minimum per-interval JFI** exposes it.
+
+### Test Scenario 1 – ECMP
+
+1. Configure the DUT with **ECMP** (flow-based hashing) across the leaf–spine links.
+2. Clear the DUT watermarks, start the collective benchmark and run N iterations.
+3. Collect the byte counters of all leaf–spine links and calculate the overall JFI and the minimum per-interval JFI of both directions.
+4. Collect the DUT queue and shared-buffer watermarks.
+5. Repeat steps 2–4 for every collective (All-to-All, All-Reduce, Gather with root Rank 0 and Gather with root Rank 8) and every value of QPs per rank pair in the list.
+
+### Test Scenario 2 – Packet Spray
+
+1. Configure the DUT with **packet spray** across the leaf–spine links and enable **Out-of-Order (OoO)** support on the tester.
+2. Repeat steps 2–5 of Test Scenario 1.
+
+### Test Scenario 3 – Dynamic Load Balancing (ASIC-specific)
+
+This scenario applies only if the DUT ASIC supports a dynamic load-balancing mode, for example flowlet-based load balancing or adaptive routing, which assigns paths according to the flowlet gaps or to the link load or quality. The name, the configuration and the parameters of these modes are vendor-specific.
+
+1. Configure the dynamic load-balancing mode on all leaves and spines. Record the ASIC, the mode and its parameters, for example the flowlet inactivity timer, the link-quality metric and the path reassignment interval.
+2. Enable **Out-of-Order (OoO)** support on the tester if the mode can reorder the packets of a flow.
+3. Repeat steps 2–5 of Test Scenario 1.
+4. If the ASIC supports more than one dynamic mode, repeat steps 1–3 for each mode.
+
+### Expected Results
+
+- All iterations shall complete successfully.
+- No NAK packets or sequence errors shall be observed on the tester (OoO packets in Scenario 2, and in Scenario 3 if the mode can reorder packets, are expected and shall be handled by the tester).
+- In each scenario, for every collective, algorithm and QP count, the **overall JFI** over the leaf–spine links defined in the Definition of JFI (16 links per direction, or 8 per data-carrying direction for Gather) shall be **not lower than 60%**. A lower value indicates imbalanced load balancing.
+- Record the minimum per-interval JFI. It has no pass/fail threshold.
+- Record the P90, P99 and P99.9 message latency measured by the tester. They have no pass/fail threshold.
+- Record the overall JFI, the minimum per-interval JFI, the P90, P99 and P99.9 message latency and the Queue 3 and shared-buffer watermarks of every leaf and spine for ECMP, packet spray and the dynamic load-balancing mode(s), per collective, algorithm and QP count, and compare the scenarios. The comparison is informational and has no pass/fail threshold. A better load-balancing result is expected to show a lower buffer watermark.
+
+### Notes
+
+1. **Collective workload versus continuous RoCEv2 traffic.** Between the iterations of a collective there is a gap with no traffic, during which the DUT buffers drain. The watermark therefore reflects the burst of a single iteration instead of a standing queue as in continuous RoCEv2 traffic, and each iteration starts from an empty buffer. For this reason the buffer comparison is based on the **peak watermark** over the run (and on the per-iteration peak when the user watermark is cleared between iterations, waiting at least one polling interval before reading and after clearing), not on the average occupancy.
+2. The number of distinct inter-host flows depends on the collective algorithm and on the QPs per rank pair, and it can be small (for example All-Reduce with 1 QP per rank pair), so ECMP hashing may be uneven. The sweep of QPs per rank pair shows how much the ECMP distribution improves with more flows.
+3. The result depends on the hashing algorithm and the load-balancing implementation of the switch chip.
+4. **Gather is an incast.** The bottleneck is the single port of the root rank, not the leaf–spine links, so the leaf–spine links are not saturated, and PFC frames and ECN-CE marking on Queue 3 are expected because of the 8:1 incast. The Queue 3 and shared-buffer watermarks of the root's leaf, and the tail message latency, are dominated by the incast at the root port and do not reflect the load balancing alone. For the comparison of the load-balancing modes, record the watermark of the leaf–spine facing queues of the leaves and spines separately from the watermark of the root-facing port.
+5. **Flowlet-based dynamic load balancing depends on the traffic gaps.** A flowlet-based mode can only move a flow to another path when the flow pauses for longer than the flowlet inactivity timer. The gaps between the messages and between the iterations of a collective are such pauses, so the result depends on the message size, the collective and the timer value, and the timer shall be recorded with the result.
+
+## Test Case 13 – Collective Failover on Leaf–Spine Link Failure
+
+### Objective
+
+- Validate that a collective benchmark survives leaf–spine link failures, single or multiple, injected while the collective is running.
+- Measure the impact of the failure as the difference of the collective completion time (CCT) between a normal iteration and the iteration that experiences the failure, and record the CCT of the iterations after the failure, which reflects the reduced fabric capacity.
+- Measure how the impact grows with the number and the location of the failed links.
+
+### Topology
+
+- Uses Test Topology 3 (2x2 Clos, 2 hosts with 8 ranks each, 8 uplinks per leaf).
+
+### Prerequisites
+
+1. Configure the DUT with the following queue assignments:
+   - **Queue 3:** Lossless queue.
+   - Enable **PFC** and **ECN marking** on the lossless queue.
+2. Use **DSCP 3** for the data traffic, which maps to **Queue 3** in the SONiC default `DSCP_TO_TC_MAP`.
+3. Configure the collective benchmark with the following parameters:
+   - **Collective and algorithm:** for example All-to-All or All-Reduce, with its algorithm (input parameter). For the All-Reduce **ring** and **tree** algorithms, the number of channels is the **NCCL default**.
+   - **Data size:** X GB per collective (input parameter).
+   - **Payload size:** the RoCEv2 payload size per packet, 4 KB or 8 KB if supported by the tester and the DUT (input parameter). The MTU of the DUT ports shall be large enough for the payload plus the headers.
+   - Data traffic shall use **DSCP 3** (Queue 3).
+   - **Intra-host traffic:** the collective traffic between the ranks of the same host (which goes over the host-internal interconnect, for example NVLink, in a real server) is emulated inside the tester, and the interconnect bandwidth is an input parameter. This traffic is not sent to the DUT. Only the traffic between ranks of different hosts (Rank 0–7 ↔ Rank 8–15) is sent as RoCEv2 traffic through the DUT, so the link failures affect this part only.
+4. Configure the lossy retransmission parameters on the tester. They decide whether the collective can complete after the link failure, because the QPs must survive the window of packet loss until the traffic is rerouted:
+   - **ACK timeout:** input parameter.
+   - **Retry count:** input parameter. The product of the ACK timeout and the retry count shall be longer than the longest expected fabric reconvergence time among the test scenarios. Test Scenario 4 is expected to need the longest reroute time.
+5. Collect the transmit rate of every leaf–spine interface from the DUT at a fixed interval of 1 second, using gNMI streaming telemetry on `COUNTERS_DB` (**STREAM** subscription, **SAMPLE** mode) as described in Test Case 12. The leaf–spine links are not visible to the tester.
+6. Choose the delay T (in seconds) between the start of an iteration and the failure.
+7. Define how the links are brought down, using one of the following methods:
+   - **Administrative shutdown:** shut down the port at both ends of the link on the DUT (for example `sudo config interface shutdown <port>` on SONiC), or verify that the peer port also detects link down. On some platforms a shutdown does not turn off the transmitter, so the peer may not detect the failure and traffic is black-holed until a protocol timeout expires.
+   - **Physical disconnection:** pull the fiber or the transceiver of the link, or use a remotely controlled optical switch or patch panel. The peer sees a real loss of signal, which is the closest to a field failure. With a manual pull the failure time is not exact.
+
+   The method used, whether the peer detected link down, and the actual time of the failure shall be recorded, because the failure detection and reroute time depend on them.
+8. Choose the number of repetitions M (input parameter, for example 5) and the number of iterations N of the collective in every run. N shall be large enough to leave several iterations after the failure iteration.
+9. For Test Scenarios 2 and 3, choose the number of failed links K (input parameter, for example 2 and 4). For Test Scenario 3, also choose the interval T<sub>s</sub> between two failures (input parameter, for example 10 seconds).
+
+### Test Steps
+
+The following steps are common to all test scenarios. Each test scenario defines the failure injected in Step 3.
+
+1. Run N iterations of the collective benchmark without any failure and record the CCT of every iteration. The average is the baseline CCT.
+2. Start the collective benchmark again and use the telemetry to confirm that the links to be failed carry traffic.
+3. After T seconds, inject the failure of the test scenario while the collective is running.
+4. Let the collective run until all N iterations complete and record the CCT of every iteration.
+5. Identify the iteration in which the failure was injected and calculate: ΔCCT = CCT(failure iteration) − baseline CCT. Calculate the **degraded CCT**: the average CCT of the iterations that start after the traffic has been rerouted (the iterations after the failure iteration, with the telemetry showing no traffic on the failed links). Calculate the JFI over the remaining leaf–spine links in these iterations, using the definition in Test Case 12.
+6. Bring the links back up, wait until the fabric is stable, and repeat steps 2–5 for M repetitions.
+
+### Test Scenario 1 – Single link failure
+
+- In Step 3, bring down one leaf–spine link, for example one of the **Leaf 1 – Spine 1** links.
+
+### Test Scenario 2 – Simultaneous failure of K links on one leaf
+
+- In Step 3, bring down K uplinks of **Leaf 1** at the same time, spread evenly over **Spine 1** and **Spine 2** (for example K = 4: two links to each spine).
+
+### Test Scenario 3 – Progressive failure of links
+
+- In Step 3, bring down one leaf–spine link. Then, every T<sub>s</sub> seconds, bring down one more link, until K links are down. Alternate the failed links between Leaf 1 and Leaf 2 and between Spine 1 and Spine 2.
+- In Step 4, record the time of every failure and the number of failed links at the start of every iteration.
+- In Step 5, calculate the CCT of the iterations as a function of the number of failed links.
+
+### Test Scenario 4 – Loss of all links between one leaf and one spine
+
+- In Step 3, bring down all 4 links between **Leaf 1** and **Spine 1** at the same time. Leaf 1 can then only reach the other leaf through Spine 2.
+
+### Expected Results
+
+- In every scenario, all iterations shall complete successfully, including the iterations in which the failure was injected. No QP shall go to the error state because of retry-count exhaustion.
+- After the failures, traffic shall be rerouted to the remaining leaf–spine links. The telemetry shall show no traffic on the failed links and the traffic redistributed across the remaining ones.
+- In every repetition, record the baseline CCT, the CCT of the failure iterations, ΔCCT, the degraded CCT and the JFI over the remaining links. Report the minimum, median and maximum of ΔCCT over the M repetitions. There is no pass/fail threshold on these values.
+- In Test Scenario 3, report the CCT against the number of failed links.
+- Record the retransmission counters on the tester.
+
+### Notes
+
+1. The ACK timeout and retry count determine whether the collective can complete at all, not the size of ΔCCT. If the retransmission window (ACK timeout × retry count) is shorter than the time the fabric needs to reroute, the QP exhausts its retries and goes to the error state, and the collective fails. The values used shall be recorded together with the result.
+2. The failure is injected while the collective is running and traffic is confirmed on the links, so that the result reflects real in-flight data loss and retransmission rather than a pre-failed fabric.
+3. With K failed links the remaining capacity of the fabric is reduced by the same fraction on the affected leaf. The degraded CCT is therefore expected to increase with K, and the JFI over the remaining links shows whether the load is spread evenly over them.
+4. In Test Scenario 4, the failure is not local to one ECMP group: traffic from the other leaf towards Leaf 1 through Spine 1 is lost until the routing protocol withdraws the route, because the remote leaf has to learn that Spine 1 can no longer reach Leaf 1. The reroute time is therefore longer than for a single link, and the retransmission window shall cover it.
