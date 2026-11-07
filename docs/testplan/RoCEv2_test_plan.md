@@ -1104,12 +1104,13 @@ JFI = (Σ x<sub>i</sub>)² / (n × Σ x<sub>i</sub>²)
 - JFI is 1 for a perfectly even distribution and 1/*n* when all traffic is on a single link.
 - **Overall JFI:** calculated on the bytes transmitted during the whole measurement window, which covers all iterations of the collective. The gaps between iterations carry no traffic and do not change it.
 - **Per-interval JFI:** the same formula applied to the bytes transmitted in each sampling interval. Intervals in which no traffic is sent (the gaps between iterations) are excluded, because the JFI is undefined for them. The overall JFI can hide a transient imbalance inside an iteration (for example traffic concentrated on a few links first and the remaining links used later), and the **minimum per-interval JFI** exposes it.
+- **Per-link rates:** JFI is a single summary value and can hide a few overloaded links. Record the average rate of **every** leaf–spine link over the measurement window (16 links per direction, or 8 per data-carrying direction for Gather), as a percentage of the link speed, together with the maximum, the minimum and the mean of the rates of each direction. A large gap between the maximum and the mean indicates hot links that can congest first.
 
 ### Test Scenario 1 – ECMP
 
 1. Configure the DUT with **ECMP** (flow-based hashing) across the leaf–spine links.
 2. Clear the DUT watermarks, start the collective benchmark and run N iterations.
-3. Collect the byte counters of all leaf–spine links and calculate the overall JFI and the minimum per-interval JFI of both directions.
+3. Collect the byte counters of all leaf–spine links and calculate the overall JFI and the minimum per-interval JFI of both directions, and the per-link rates.
 4. Collect the DUT queue and shared-buffer watermarks.
 5. Repeat steps 2–4 for every collective (All-to-All, All-Reduce, Gather with root Rank 0 and Gather with root Rank 8) and every value of QPs per rank pair in the list.
 
@@ -1132,9 +1133,9 @@ This scenario applies only if the DUT ASIC supports a dynamic load-balancing mod
 - All iterations shall complete successfully.
 - No NAK packets or sequence errors shall be observed on the tester (OoO packets in Scenario 2, and in Scenario 3 if the mode can reorder packets, are expected and shall be handled by the tester).
 - In each scenario, for every collective, algorithm and QP count, the **overall JFI** over the leaf–spine links defined in the Definition of JFI (16 links per direction, or 8 per data-carrying direction for Gather) shall be **not lower than 60%**. A lower value indicates imbalanced load balancing.
-- Record the minimum per-interval JFI. It has no pass/fail threshold.
+- Record the minimum per-interval JFI of both directions and the per-link rates of all leaf–spine links. They have no pass/fail threshold.
 - Record the P90, P99 and P99.9 message latency measured by the tester. They have no pass/fail threshold.
-- Record the overall JFI, the minimum per-interval JFI, the P90, P99 and P99.9 message latency and the Queue 3 and shared-buffer watermarks of every leaf and spine for ECMP, packet spray and the dynamic load-balancing mode(s), per collective, algorithm and QP count, and compare the scenarios. The comparison is informational and has no pass/fail threshold. A better load-balancing result is expected to show a lower buffer watermark.
+- Record the overall JFI, the minimum per-interval JFI, the per-link rates, the P90, P99 and P99.9 message latency and the Queue 3 and shared-buffer watermarks of every leaf and spine for ECMP, packet spray and the dynamic load-balancing mode(s), per collective, algorithm and QP count, and compare the scenarios. The comparison is informational and has no pass/fail threshold. A better load-balancing result is expected to show a lower buffer watermark.
 
 ### Notes
 
