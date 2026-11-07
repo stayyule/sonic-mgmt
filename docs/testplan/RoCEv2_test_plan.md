@@ -158,8 +158,8 @@ V3: P1 <-> P5   (different linecard, ASIC 1a -> Fabric Card -> ASIC 2a)
      - The DSCP value mapped to **Queue 5** shall carry **CNP traffic**.
      - The DSCP value mapped to **Queue 6** shall carry **ACK/NAK traffic**.
 5. Configure the following traffic parameters:
-   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
-   - **Message size:** 1 MB (256 packets per message burst at 4 KB payload size)
+   - **InfiniBand MTU:** 4 KB
+   - **Message size:** 1 MB (256 packets per message burst)
    - **Initial ECN field:** `00` (Not ECN-Capable)
 
 6. Run lossless and lossy traffic for 3 minutes and verify the statistics.
@@ -233,8 +233,8 @@ V3: P1 <-> P5   (different linecard, ASIC 1a -> Fabric Card -> ASIC 2a)
      - Data traffic shall use the **DSCP values mapped to Queues 0, 1, and 2**, respectively.
    - CNP traffic shall use the **DSCP value mapped to Queue 5**.
    - ACK/NAK traffic shall use the **DSCP value mapped to Queue 6**.
-   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
-   - **Message size:** 128 KB (32 packets per message burst at 4 KB payload size)
+   - **InfiniBand MTU:** 4 KB
+   - **Message size:** 128 KB (32 packets per message burst)
    - **Traffic rate:** 100% line rate per transmitting port
    - **Initial ECN field:** `00` (Not ECN-Capable)
 
@@ -255,8 +255,8 @@ V3: P1 <-> P5   (different linecard, ASIC 1a -> Fabric Card -> ASIC 2a)
      - Data traffic shall use the **DSCP values mapped to Queues 0, 1, and 2**, respectively.
    - CNP traffic shall use the **DSCP value mapped to Queue 5**.
    - ACK/NAK traffic shall use the **DSCP value mapped to Queue 6**.
-   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
-   - **Message size:** 128 KB (32 packets per message burst at 4 KB payload size)
+   - **InfiniBand MTU:** 4 KB
+   - **Message size:** 128 KB (32 packets per message burst)
    - **Traffic rate:** 100% line rate per transmitting port
    - **Initial ECN field:** `00` (Not ECN-Capable)
 
@@ -270,17 +270,17 @@ V3: P1 <-> P5   (different linecard, ASIC 1a -> Fabric Card -> ASIC 2a)
    - Each rank pair shall transmit **4 GB** of data traffic.
    - **Rank 0 → Rank 3**
      - Data traffic shall use the **DSCP value mapped to Queue 3** (lossless).
-     - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
-     - **Message size:** 128 KB (32 packets per message burst at 4 KB payload size)
+     - **InfiniBand MTU:** 4 KB
+     - **Message size:** 128 KB (32 packets per message burst)
    - **Rank 1 → Rank 3**
      - Data traffic shall use the **DSCP value mapped to Queue 4** (lossless).
-     - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
+     - **InfiniBand MTU:** 4 KB
      - **Message size:** 4 KB (**WRITE-only** message)
    - **Rank 2 → Rank 3**
      - Configure one QP for each lossy queue (**Queues 0, 1, and 2**).
      - Data traffic shall use the **DSCP values mapped to Queues 0, 1, and 2**, respectively.
-     - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
-     - **Message size:** 128 KB (32 packets per message burst at 4 KB payload size)
+     - **InfiniBand MTU:** 4 KB
+     - **Message size:** 128 KB (32 packets per message burst)
    - CNP traffic shall use the **DSCP value mapped to Queue 5**.
    - ACK/NAK traffic shall use the **DSCP value mapped to Queue 6**.
    - **Traffic rate:** 100% line rate per transmitting port
@@ -372,8 +372,8 @@ All messages shall complete successfully.
      - Data traffic shall use the **DSCP values mapped to Queues 0, 1, and 2**, respectively.
    - CNP traffic shall use the **DSCP value mapped to Queue 5**.
    - ACK/NAK traffic shall use the **DSCP value mapped to Queue 6**.
-   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
-   - **Message size:** 128 KB (32 packets per message burst at 4 KB payload size)
+   - **InfiniBand MTU:** 4 KB
+   - **Message size:** 128 KB (32 packets per message burst)
    - **Traffic rate:** 100% line rate per transmitting port
    - **Initial ECN field:** `01/10` (ECN-Capable)
 5. Run traffic and validate statistics.
@@ -393,8 +393,8 @@ All messages shall complete successfully.
      - Data traffic shall use the **DSCP values mapped to Queues 0, 1, and 2**, respectively.
    - CNP traffic shall use the **DSCP value mapped to Queue 5**.
    - ACK/NAK traffic shall use the **DSCP value mapped to Queue 6**.
-   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
-   - **Message size:** 128 KB (32 packets per message burst at 4 KB payload size)
+   - **InfiniBand MTU:** 4 KB
+   - **Message size:** 128 KB (32 packets per message burst)
    - **Traffic rate:** 100% line rate per transmitting port
    - **Initial ECN field:** `01/10` (ECN-Capable)
 7. Run traffic and validate statistics.
@@ -496,8 +496,8 @@ All messages shall complete successfully.
      - Data traffic shall use the **DSCP values mapped to Queues 0, 1, and 2**, respectively.
    - CNP traffic shall use the **DSCP value mapped to Queue 5**.
    - ACK/NAK traffic shall use the **DSCP value mapped to Queue 6**.
-   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
-   - **Message size:** 1 MB (256 packets per message burst at 4 KB payload size)
+   - **InfiniBand MTU:** 4 KB
+   - **Message size:** 1 MB (256 packets per message burst)
    - **Traffic rate:** 100% line rate per transmitting port
    - **Initial ECN field:** `01/10` (ECN-Capable)
    - **Configure constant rate traffic (RoCEv2 storage traffic)**
@@ -521,8 +521,8 @@ All messages shall complete successfully.
      - Data traffic shall use the **DSCP values mapped to Queues 0, 1, and 2**, respectively.
    - CNP traffic shall use the **DSCP value mapped to Queue 5**.
    - ACK/NAK traffic shall use the **DSCP value mapped to Queue 6**.
-   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
-   - **Message size:** 1 MB (256 packets per message burst at 4 KB payload size)
+   - **InfiniBand MTU:** 4 KB
+   - **Message size:** 1 MB (256 packets per message burst)
    - **Traffic rate:** 100% line rate per transmitting port
    - **Initial ECN field:** `01/10` (ECN-Capable)
    - **Configure constant rate traffic (RoCEv2 storage traffic)**
@@ -611,8 +611,8 @@ All messages shall complete successfully.
      - Configure one QP for each lossy priority (**Queues 0, 1 and 2**).
      - The DSCP value mapped to **Queue 5** shall carry **CNP traffic**.
      - The DSCP value mapped to **Queue 6** shall carry **ACK/NAK traffic**.
-     - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
-     - **Message size:** 128 KB (32 packets per message burst at 4 KB payload size)
+     - **InfiniBand MTU:** 4 KB
+     - **Message size:** 128 KB (32 packets per message burst)
      - **Traffic rate:** 100% line rate per transmitting port
      - **Initial ECN field:** `01/10` (ECN-Capable)
      - **Configure constant rate traffic (RoCEv2 storage traffic)**
@@ -691,8 +691,8 @@ All messages shall complete successfully.
      - Data traffic shall use the **DSCP values mapped to Queues 0, 1, and 2**, respectively.
    - CNP traffic shall use the **DSCP value mapped to Queue 5**.
    - ACK/NAK traffic shall use the **DSCP value mapped to Queue 6**.
-   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
-   - **Message size:** 1 MB (256 packets per message burst at 4 KB payload size)
+   - **InfiniBand MTU:** 4 KB
+   - **Message size:** 1 MB (256 packets per message burst)
    - **Traffic rate:** 100% line rate per transmitting port
    - **Initial ECN field:** `01/10` (ECN-Capable)
 
@@ -713,8 +713,8 @@ All messages shall complete successfully.
      - Data traffic shall use the **DSCP values mapped to Queues 0, 1, and 2**, respectively.
    - CNP traffic shall use the **DSCP value mapped to Queue 5**.
    - ACK/NAK traffic shall use the **DSCP value mapped to Queue 6**.
-   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
-   - **Message size:** 1 MB (256 packets per message burst at 4 KB payload size)
+   - **InfiniBand MTU:** 4 KB
+   - **Message size:** 1 MB (256 packets per message burst)
    - **Traffic rate:** 100% line rate per transmitting port
    - **Initial ECN field:** `01/10` (ECN-Capable)
 
@@ -778,7 +778,7 @@ All messages shall complete successfully.
    - If multiple DSCP values are mapped to the queue, randomly select one DSCP value for the test.
 
 3. Configure continuous stateful RoCEv2 traffic with the following parameters:
-   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
+   - **InfiniBand MTU:** 4 KB
    - **Message size:** 1 MB
    - Data traffic shall use the **DSCP value mapped to Queue 3**.
    - ACK/NAK traffic shall use the **DSCP value mapped to Queue 6**.
@@ -842,7 +842,7 @@ All messages shall complete successfully.
    - If multiple DSCP values are mapped to the queue, randomly select one DSCP value for the test.
 
 3. Configure continuous stateful RoCEv2 traffic with the following parameters:
-   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
+   - **InfiniBand MTU:** 4 KB
    - **Message size:** 128 KB
    - Data traffic shall use the **DSCP value mapped to Queue 3**.
    - ACK/NAK traffic shall use the **DSCP value mapped to Queue 6**.
@@ -856,8 +856,8 @@ All messages shall complete successfully.
    - Data traffic shall use the **DSCP value mapped to Queue 3**.
    - ACK/NAK traffic shall use the **DSCP value mapped to Queue 6**.
    - CNP traffic shall use the **DSCP value mapped to Queue 5**.
-   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
-   - **Message size:** 128 KB (32 packets per message burst at 4 KB payload size)
+   - **InfiniBand MTU:** 4 KB
+   - **Message size:** 128 KB (32 packets per message burst)
    - **Initial ECN field:** `ECT(0)` or `ECT(1)` (`10` or `01`).
 3. Enable **Out-of-Order (OoO)** support on the tester.
 4. Run the traffic until completion and validate the traffic and DUT statistics.
@@ -909,7 +909,7 @@ All messages shall complete successfully.
 ### Test Steps
 
 1. Configure stateful RoCEv2 traffic with the following parameters:
-   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
+   - **InfiniBand MTU:** 4 KB
    - **Message size:** 1 MB
    - Data traffic shall use the **DSCP value mapped to Queue 3/Queue 4**.
 2. Configure **three background traffic flows** between the following port pairs:
@@ -973,7 +973,7 @@ All messages shall complete successfully.
    - **Port 2 → Port 6**
 2. Configure the traffic with the following parameters:
    - Data traffic shall use the **DSCP value mapped to Queue 3**.
-   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
+   - **InfiniBand MTU:** 4 KB
    - **Message size:** 1 MB
 3. Start the traffic and verify the tester statistics.
 4. Bring down one **Leaf 1** egress link carrying traffic and verify the tester statistics.
@@ -1029,8 +1029,8 @@ All messages shall complete successfully.
    - Data traffic shall use the **DSCP value mapped to Queue 3**.
    - CNP traffic shall use the **DSCP value mapped to Queue 5**.
    - ACK/NAK traffic shall use the **DSCP value mapped to Queue 6**.
-   - **Payload size:** 4 KB (or 8 KB if supported by the tester and the DUT)
-   - **Message size:** 128 KB (32 packets per message burst at 4 KB payload size)
+   - **InfiniBand MTU:** 4 KB
+   - **Message size:** 128 KB (32 packets per message burst)
    - **Initial ECN field:** `00` (Not ECN-Capable).
 3. Run the traffic for **60 seconds** and validate the traffic and DUT statistics.
 4. Configure **constant-rate** traffic for:
@@ -1081,7 +1081,7 @@ All messages shall complete successfully.
      In both runs the data of the other ranks of the root's own host stays inside that host and is not sent to the DUT, all the inter-host data flows in one direction, and it converges on the single port of the root rank.
    - **Data size:** X GB per collective (input parameter).
    - **Iterations:** N iterations per scenario (input parameter).
-   - **Payload size:** the RoCEv2 payload size per packet, 4 KB or 8 KB if supported by the tester and the DUT (input parameter). The MTU of the DUT ports shall be large enough for the payload plus the headers.
+   - **InfiniBand MTU:** 4 KB (input parameter). The MTU of the DUT ports shall be large enough for the payload plus the headers.
    - Data traffic shall use **DSCP 3** (Queue 3).
    - **Intra-host traffic:** the collective traffic between the ranks of the same host (which goes over the host-internal interconnect, for example NVLink, in a real server) is emulated inside the tester, and the interconnect bandwidth is an input parameter. This traffic is not sent to the DUT. Only the traffic between ranks of different hosts (Rank 0–7 ↔ Rank 8–15) is sent as RoCEv2 traffic through the DUT, so the JFI and buffer measurements refer to this part only.
 5. Collect the transmit byte counters of every leaf–spine interface in both directions (leaf-to-spine and spine-to-leaf) from the DUT, because the leaf–spine links are not visible to the tester:
@@ -1166,7 +1166,7 @@ This scenario applies only if the DUT ASIC supports a dynamic load-balancing mod
 3. Configure the collective benchmark with the following parameters:
    - **Collective and algorithm:** for example All-to-All or All-Reduce, with its algorithm (input parameter). For the All-Reduce **ring** and **tree** algorithms, the number of channels is the **NCCL default**.
    - **Data size:** X GB per collective (input parameter).
-   - **Payload size:** the RoCEv2 payload size per packet, 4 KB or 8 KB if supported by the tester and the DUT (input parameter). The MTU of the DUT ports shall be large enough for the payload plus the headers.
+   - **InfiniBand MTU:** 4 KB (input parameter). The MTU of the DUT ports shall be large enough for the payload plus the headers.
    - Data traffic shall use **DSCP 3** (Queue 3).
    - **Intra-host traffic:** the collective traffic between the ranks of the same host (which goes over the host-internal interconnect, for example NVLink, in a real server) is emulated inside the tester, and the interconnect bandwidth is an input parameter. This traffic is not sent to the DUT. Only the traffic between ranks of different hosts (Rank 0–7 ↔ Rank 8–15) is sent as RoCEv2 traffic through the DUT, so the link failures affect this part only.
 4. Configure the lossy retransmission parameters on the tester. They decide whether the collective can complete after the link failure, because the QPs must survive the window of packet loss until the traffic is rerouted:
